@@ -116,7 +116,7 @@ fun QuestCard(q: Quest) {
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(q.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text("${q.type}  •  ${q.windowMin} MIN WINDOW", color = Soft, fontSize = 11.sp, letterSpacing = 1.sp)
+            Text("${q.type}  •  ${q.windowMin} MIN  •  FAILS ${q.failStreak}", color = Soft, fontSize = 11.sp, letterSpacing = 1.sp)
         }
         Text("🔒", fontSize = 18.sp)
     }
@@ -128,6 +128,7 @@ fun QuestHome() {
     val dao = remember { AppDb.get(ctx).dao() }
     val quests by dao.all().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    LaunchedEffect(quests) { quests.forEach { AlarmScheduler.schedule(ctx, it) } }
     var adding by remember { mutableStateOf(false) }
 
     Box(

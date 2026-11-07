@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SystemRoot(tick: Int) {
     var ready by remember { mutableStateOf(false) }
-    if (ready) QuestHome() else PermissionFlow(tick) { ready = true }
+    if (ready) SystemScreen() else PermissionFlow(tick) { ready = true }
 }
 
 @Composable

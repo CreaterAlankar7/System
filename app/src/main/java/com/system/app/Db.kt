@@ -20,8 +20,17 @@ interface QuestDao {
     @Query("SELECT * FROM quests ORDER BY hour, minute")
     fun all(): Flow<List<Quest>>
 
+    @Query("SELECT * FROM quests")
+    suspend fun list(): List<Quest>
+
+    @Query("SELECT * FROM quests WHERE id = :id")
+    suspend fun byId(id: Long): Quest?
+
     @Insert
     suspend fun insert(q: Quest): Long
+
+    @Query("UPDATE quests SET failStreak = :streak, windowMin = :win WHERE id = :id")
+    suspend fun setStreak(id: Long, streak: Int, win: Int)
 }
 
 @Database(entities = [Quest::class], version = 1, exportSchema = false)

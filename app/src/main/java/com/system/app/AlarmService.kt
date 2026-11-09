@@ -95,7 +95,7 @@ class AlarmService : Service() {
         )
         return NotificationCompat.Builder(this, CH_ALARM)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("[ WARNING ] Quest time!")
+            .setContentTitle("[ WARNING ] Quest deadline passed!")
             .setContentText(title)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)

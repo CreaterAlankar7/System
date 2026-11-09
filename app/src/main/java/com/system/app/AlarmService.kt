@@ -154,8 +154,13 @@ class AlarmService : Service() {
         val streak = if (success) 0 else a.streak + 1
         val win = if (!success && streak % 3 == 0) minOf(30, a.win + 5) else a.win
         scope.launch {
-            withContext(Dispatchers.IO) {
-                AppDb.get(this@AlarmService).dao().setStreak(a.questId, streak, win)
+           withContext(Dispatchers.IO) {
+           val dao = AppDb.get(this@AlarmService).dao()
+                if (success) {
+                    dao.markDone(a.questId, java.time.LocalDate.now().toEpochDay())
+                } else {
+                    dao.setStreak(a.questId, streak, win)
+                }
             }
             notifyResult(a, success, streak, win)
             stopForeground(STOP_FOREGROUND_REMOVE)

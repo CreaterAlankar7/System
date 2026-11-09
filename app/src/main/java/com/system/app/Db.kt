@@ -2,6 +2,8 @@ package com.system.app
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "quests")
@@ -15,7 +17,8 @@ data class Quest(
     val type: String = "DAILY",
     val windowMin: Int = 10,
     val failStreak: Int = 0,
-    val lastDoneDay: Long = -1L
+    val lastDoneDay: Long = -1L,
+    val stat: String = "STR"
 )
 
 @Dao
@@ -39,7 +42,13 @@ interface QuestDao {
     suspend fun markDone(id: Long, day: Long)
 }
 
-@Database(entities = [Quest::class], version = 2, exportSchema = false)
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE quests ADD COLUMN stat TEXT NOT NULL DEFAULT 'STR'")
+    }
+}
+
+@Database(entities = [Quest::class], version = 3, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): QuestDao
 
@@ -47,7 +56,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var inst: AppDb? = null
         fun get(c: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(c.applicationContext, AppDb::class.java, "system.db")
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_2_3)
                 .build().also { inst = it }
         }
     }

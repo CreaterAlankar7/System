@@ -162,7 +162,12 @@ class AlarmService : Service() {
                     dao.setStreak(a.questId, streak, win)
                 }
             }
-            notifyResult(a, success, streak, win)
+           val delta = if (success) {
+                PlayerStore.award(this@AlarmService, 50, "", 0)
+            } else {
+                PlayerStore.penalty(this@AlarmService, 50)
+            }
+            notifyResult(a, success, streak, win, delta)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }

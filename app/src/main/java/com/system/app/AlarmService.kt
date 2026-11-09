@@ -173,11 +173,11 @@ class AlarmService : Service() {
         }
     }
 
-    private fun notifyResult(a: Active, ok: Boolean, streak: Int, win: Int) {
+        private fun notifyResult(a: Active, ok: Boolean, streak: Int, win: Int, delta: Int) {
         val text = if (ok) {
-            "Quest cleared: ${a.title}. Well done, Player."
+            "Quest"Quest cleared late: ${a.title}. +$delta XP."
         } else {
-            "Quest failed: ${a.title}. Fail streak: $streak." +
+            "Quest failed: ${a.title}. $delta XP. Fail streak: $streak." +
                 (if (win > a.win) " Alarm window increased to $win min." else "")
         }
         val n = NotificationCompat.Builder(this, CH_RESULT)

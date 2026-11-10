@@ -228,7 +228,7 @@ fun QuestHome() {
                 onCaptured = { _ ->
                     scope.launch { dao.markDone(pq.id, LocalDate.now().toEpochDay()) }
                     val before = PlayerStore.read(ctx).level
-                    PlayerStore.award(ctx, 100, pq.stat, 1)
+                    PlayerStore.award(ctx, pq.xpReward(), pq.stat, 1)
                     val after = PlayerStore.read(ctx).level
                     proofFor = null
                     msg = "[SYSTEM]: Quest cleared. +100 XP, +1 ${pq.stat}." +

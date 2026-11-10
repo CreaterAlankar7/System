@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-const val XP_PER_LEVEL = 300
+const val XP_PER_LEVEL = 500
 
 data class PlayerData(val xp: Int, val str: Int, val intel: Int, val vit: Int) {
     val level: Int get() = xp / XP_PER_LEVEL + 1

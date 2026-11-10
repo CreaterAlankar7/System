@@ -28,6 +28,7 @@ data class Active(
 
 object AlarmState {
     val current = MutableStateFlow<Active?>(null)
+    @Volatile var activityVisible = false
 }
 
 object AlarmScheduler {
@@ -51,7 +52,15 @@ object AlarmScheduler {
             Intent(c, AlarmReceiver::class.java).putExtra("id", q.id).putExtra("kind", kind),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+        if (kind == "end") {
+            val show = PendingIntent.getActivity(
+                c, 0, Intent(c, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, show), pi)
+        } else {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+        }
     }
 }
 
@@ -64,12 +73,12 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 val q = AppDb.get(c).dao().byId(id)
                 if (q != null) {
-                    AlarmScheduler.schedule(c, q)
                     if (kind == "start") {
                         notifyStart(c, q)
                     } else if (q.lastDoneDay != LocalDate.now().toEpochDay()) {
                         startAlarm(c, q)
                     }
+                    AlarmScheduler.schedule(c, q)
                 }
             } finally {
                 pr.finish()
@@ -124,4 +133,3 @@ class BootReceiver : BroadcastReceiver() {
         }
     }
 }
-

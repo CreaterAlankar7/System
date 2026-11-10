@@ -7,15 +7,21 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.PixelFormat
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
+import android.view.View
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +39,7 @@ class AlarmService : Service() {
         private const val CH_ALARM = "system_alarm"
         private const val CH_RESULT = "system_result"
         private const val NOTIF_ID = 42
+        private const val FAIL_PENALTY = 10
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -60,19 +67,25 @@ class AlarmService : Service() {
         }
         val id = intent?.getLongExtra("id", -1) ?: -1
         val title = intent?.getStringExtra("title") ?: "Quest"
-        val win = intent?.getIntExtra("win", 10) ?: 10
+        val win = intent?.getIntExtra("win", 5) ?: 5
         val streak = intent?.getIntExtra("streak", 0) ?: 0
+        val xp = intent?.getIntExtra("xp", 0) ?: 0
         val running = AlarmState.current.value
         if (running != null) {
             startFg(alertNote(running.title))
             return START_NOT_STICKY
         }
         AlarmState.current.value =
-            Active(id, title, System.currentTimeMillis() + win * 60_000L, win, streak)
+            Active(id, title, System.currentTimeMillis() + win * 60_000L, win, streak, xp)
         startFg(alertNote(title))
         ring()
+        showAlarmScreen()
         timer = scope.launch {
-            delay(win * 60_000L)
+            val end = System.currentTimeMillis() + win * 60_000L
+            while (end - System.currentTimeMillis() > 0) {
+                delay(minOf(15_000L, end - System.currentTimeMillis()))
+                if (end - System.currentTimeMillis() > 500) showAlarmScreen()
+            }
             finish(false)
         }
         return START_NOT_STICKY
@@ -103,6 +116,33 @@ class AlarmService : Service() {
             .setContentIntent(pi)
             .setFullScreenIntent(pi, true)
             .build()
+    }
+
+    // Opens the red warning screen on top of everything (needs "Display over other apps").
+    private fun showAlarmScreen() {
+        runCatching {
+            if (!Settings.canDrawOverlays(this)) return
+            val wm = getSystemService(WindowManager::class.java)
+            val dot = View(this)
+            val lp = WindowManager.LayoutParams(
+                1, 1,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            )
+            wm.addView(dot, lp)
+            startActivity(
+                Intent(this, AlarmActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            )
+            Handler(Looper.getMainLooper()).postDelayed({
+                runCatching { wm.removeView(dot) }
+            }, 1500)
+        }
     }
 
     private fun ring() {
@@ -163,9 +203,9 @@ class AlarmService : Service() {
                 }
             }
             val delta = if (success) {
-                PlayerStore.award(this@AlarmService, 50, "", 0)
+                PlayerStore.award(this@AlarmService, a.xp / 2, "", 0)
             } else {
-                PlayerStore.penalty(this@AlarmService, 50)
+                PlayerStore.penalty(this@AlarmService, FAIL_PENALTY)
             }
             notifyResult(a, success, streak, win, delta)
             stopForeground(STOP_FOREGROUND_REMOVE)

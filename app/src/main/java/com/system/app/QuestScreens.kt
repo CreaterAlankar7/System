@@ -231,7 +231,7 @@ fun QuestHome() {
                     PlayerStore.award(ctx, pq.xpReward(), pq.stat, 1)
                     val after = PlayerStore.read(ctx).level
                     proofFor = null
-                    msg = "[SYSTEM]: Quest cleared. +100 XP, +1 ${pq.stat}." +
+                    msg = "[SYSTEM]: Quest cleared. +${pq.xpReward()} XP, +1 ${pq.stat}." +
                         (if (after > before) "  LEVEL UP! Lv.$after" else "")
                 },
                 onCancel = { proofFor = null }

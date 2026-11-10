@@ -22,7 +22,8 @@ data class Active(
     val title: String,
     val endAt: Long,
     val win: Int,
-    val streak: Int
+    val streak: Int,
+    val xp: Int
 )
 
 object AlarmState {
@@ -83,6 +84,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .putExtra("title", q.title)
             .putExtra("win", q.windowMin)
             .putExtra("streak", q.failStreak)
+            .putExtra("xp", q.xpReward())
         ContextCompat.startForegroundService(c, si)
     }
 

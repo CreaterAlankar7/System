@@ -15,11 +15,14 @@ data class Quest(
     val endHour: Int,
     val endMinute: Int,
     val type: String = "DAILY",
-    val windowMin: Int = 10,
+    val windowMin: Int = 5,
     val failStreak: Int = 0,
     val lastDoneDay: Long = -1L,
     val stat: String = "STR"
 )
+
+fun Quest.xpReward(): Int =
+    ((endHour * 60 + endMinute) - (hour * 60 + minute)).coerceAtLeast(0) * 2
 
 @Dao
 interface QuestDao {
@@ -48,7 +51,13 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
-@Database(entities = [Quest::class], version = 3, exportSchema = false)
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("UPDATE quests SET windowMin = 5 WHERE windowMin = 10")
+    }
+}
+
+@Database(entities = [Quest::class], version = 4, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): QuestDao
 
@@ -56,7 +65,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var inst: AppDb? = null
         fun get(c: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(c.applicationContext, AppDb::class.java, "system.db")
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 .build().also { inst = it }
         }
     }

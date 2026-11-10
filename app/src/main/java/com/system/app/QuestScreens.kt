@@ -135,6 +135,11 @@ fun AddQuest(onSave: (String, Int, Int, Int, Int, String) -> Unit, onCancel: () 
         Spacer(Modifier.height(10.dp))
         Stepper("MINUTE", em, 60, 5) { em = it }
         Spacer(Modifier.height(20.dp))
+        Text(
+            "REWARD: ${(eh * 60 + em - (sh * 60 + sm)).coerceAtLeast(0) * 2} XP  (2 XP per minute)",
+            color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
         if (!validTime) {
             Text("End time must be after start time.", color = SysRed, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
@@ -180,7 +185,7 @@ fun QuestCard(q: Quest, st: QStatus, onProof: () -> Unit) {
                 Text(q.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("${q.type}  •  ${q.stat}  •  $label  •  FAILS ${q.failStreak}", color = tone,
                     fontSize = 11.sp, letterSpacing = 1.sp)
-                Text("ALARM WINDOW ${q.windowMin} MIN", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
+                Text("ALARM ${q.windowMin} MIN  •  REWARD ${q.xpReward()} XP", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
             }
             Text("🔒", fontSize = 18.sp)
         }

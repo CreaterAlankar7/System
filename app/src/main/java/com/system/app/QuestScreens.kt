@@ -83,8 +83,9 @@ fun Stepper(label: String, value: Int, count: Int, big: Int, onChange: (Int) -> 
 }
 
 @Composable
-fun AddQuest(onSave: (String, Int, Int, Int, Int) -> Unit, onCancel: () -> Unit) {
+fun AddQuest(onSave: (String, Int, Int, Int, Int, String) -> Unit, onCancel: () -> Unit) {
     var title by remember { mutableStateOf("") }
+    var stat by remember { mutableStateOf("STR") }
     var sh by remember { mutableIntStateOf(7) }
     var sm by remember { mutableIntStateOf(0) }
     var eh by remember { mutableIntStateOf(7) }
@@ -108,6 +109,19 @@ fun AddQuest(onSave: (String, Int, Int, Int, Int) -> Unit, onCancel: () -> Unit)
                 modifier = Modifier.fillMaxWidth()
             )
         }
+        Spacer(Modifier.height(20.dp))
+        Text("[ QUEST TYPE ]", color = SysBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("STR", "INT", "VIT").forEach { s ->
+                SysBtn("[ $s ]", if (stat == s) SysBlue else Dim) { stat = s }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "STR: body & fitness  •  INT: study & mind  •  VIT: health & habits",
+            color = Dim, fontSize = 11.sp, textAlign = TextAlign.Center
+        )
         Spacer(Modifier.height(20.dp))
         Text("[ START TIME ]", color = SysBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(10.dp))
@@ -133,7 +147,7 @@ fun AddQuest(onSave: (String, Int, Int, Int, Int) -> Unit, onCancel: () -> Unit)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SysBtn("[ CANCEL ]", Dim) { onCancel() }
             SysBtn("[ REGISTER ]", if (ok) SysBlue else Dim) {
-                if (ok) onSave(title.trim(), sh, sm, eh, em)
+                if (ok) onSave(title.trim(), sh, sm, eh, em, stat)
             }
         }
     }
@@ -164,7 +178,7 @@ fun QuestCard(q: Quest, st: QStatus, onProof: () -> Unit) {
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(q.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("${q.type}  •  $label  •  FAILS ${q.failStreak}", color = tone,
+                Text("${q.type}  •  ${q.stat}  •  $label  •  FAILS ${q.failStreak}", color = tone,
                     fontSize = 11.sp, letterSpacing = 1.sp)
                 Text("ALARM WINDOW ${q.windowMin} MIN", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
             }
@@ -184,6 +198,7 @@ fun QuestHome() {
     val quests by dao.all().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     LaunchedEffect(quests) { quests.forEach { AlarmScheduler.schedule(ctx, it) } }
+    var tab by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf(false) }
     var proofFor by remember { mutableStateOf<Quest?>(null) }
     var msg by remember { mutableStateOf<String?>(null) }
@@ -196,7 +211,7 @@ fun QuestHome() {
     }
     LaunchedEffect(msg) {
         if (msg != null) {
-            delay(3500)
+            delay(4000)
             msg = null
         }
     }
@@ -212,15 +227,21 @@ fun QuestHome() {
                 pq.id,
                 onCaptured = { _ ->
                     scope.launch { dao.markDone(pq.id, LocalDate.now().toEpochDay()) }
+                    val before = PlayerStore.read(ctx).level
+                    PlayerStore.award(ctx, 100, pq.stat, 1)
+                    val after = PlayerStore.read(ctx).level
                     proofFor = null
-                    msg = "[SYSTEM]: Quest cleared. Well done, Player."
+                    msg = "[SYSTEM]: Quest cleared. +100 XP, +1 ${pq.stat}." +
+                        (if (after > before) "  LEVEL UP! Lv.$after" else "")
                 },
                 onCancel = { proofFor = null }
             )
         } else if (adding) {
             AddQuest(
-                onSave = { t, a, b, c, d ->
-                    scope.launch { dao.insert(Quest(title = t, hour = a, minute = b, endHour = c, endMinute = d)) }
+                onSave = { t, a, b, c, d, s ->
+                    scope.launch {
+                        dao.insert(Quest(title = t, hour = a, minute = b, endHour = c, endMinute = d, stat = s))
+                    }
                     adding = false
                 },
                 onCancel = { adding = false }
@@ -228,7 +249,11 @@ fun QuestHome() {
         } else {
             Column(Modifier.fillMaxSize().padding(20.dp)) {
                 Text("[ SYSTEM ]", color = SysBlue, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                Text("DAILY QUESTS", color = Soft, fontSize = 13.sp, letterSpacing = 3.sp)
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SysBtn("[ QUESTS ]", if (tab == 0) SysBlue else Dim, Modifier.weight(1f)) { tab = 0 }
+                    SysBtn("[ STATUS ]", if (tab == 1) SysBlue else Dim, Modifier.weight(1f)) { tab = 1 }
+                }
                 Spacer(Modifier.height(12.dp))
                 if (msg != null) {
                     Text(
@@ -237,19 +262,23 @@ fun QuestHome() {
                     )
                     Spacer(Modifier.height(12.dp))
                 }
-                if (quests.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("[SYSTEM]: No quests registered.", color = Dim, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-                    }
+                if (tab == 1) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) { StatusScreen() }
                 } else {
-                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(quests, key = { it.id }) { q ->
-                            QuestCard(q, statusOf(q, nowM, today)) { proofFor = q }
+                    if (quests.isEmpty()) {
+                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text("[SYSTEM]: No quests registered.", color = Dim, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else {
+                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(quests, key = { it.id }) { q ->
+                                QuestCard(q, statusOf(q, nowM, today)) { proofFor = q }
+                            }
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) { adding = true }
                 }
-                Spacer(Modifier.height(12.dp))
-                SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) { adding = true }
             }
         }
     }

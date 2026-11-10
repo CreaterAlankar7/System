@@ -154,15 +154,15 @@ class AlarmService : Service() {
         val streak = if (success) 0 else a.streak + 1
         val win = if (!success && streak % 3 == 0) minOf(30, a.win + 5) else a.win
         scope.launch {
-           withContext(Dispatchers.IO) {
-           val dao = AppDb.get(this@AlarmService).dao()
+            withContext(Dispatchers.IO) {
+                val dao = AppDb.get(this@AlarmService).dao()
                 if (success) {
                     dao.markDone(a.questId, java.time.LocalDate.now().toEpochDay())
                 } else {
                     dao.setStreak(a.questId, streak, win)
                 }
             }
-           val delta = if (success) {
+            val delta = if (success) {
                 PlayerStore.award(this@AlarmService, 50, "", 0)
             } else {
                 PlayerStore.penalty(this@AlarmService, 50)
@@ -173,9 +173,9 @@ class AlarmService : Service() {
         }
     }
 
-        private fun notifyResult(a: Active, ok: Boolean, streak: Int, win: Int, delta: Int) {
+    private fun notifyResult(a: Active, ok: Boolean, streak: Int, win: Int, delta: Int) {
         val text = if (ok) {
-            "Quest"Quest cleared late: ${a.title}. +$delta XP."
+            "Quest cleared late: ${a.title}. +$delta XP."
         } else {
             "Quest failed: ${a.title}. $delta XP. Fail streak: $streak." +
                 (if (win > a.win) " Alarm window increased to $win min." else "")

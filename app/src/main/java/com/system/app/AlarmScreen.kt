@@ -29,17 +29,35 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 class AlarmActivity : ComponentActivity() {
+    private var camTick by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContent { AlarmScreen { finish() } }
+        if (intent.getBooleanExtra("camera", false)) camTick = 1
+        setContent { AlarmScreen(camTick) { finish() } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("camera", false)) camTick++
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AlarmState.activityVisible = true
+    }
+
+    override fun onStop() {
+        AlarmState.activityVisible = false
+        super.onStop()
     }
 }
 
 @Composable
-fun AlarmScreen(onClose: () -> Unit) {
+fun AlarmScreen(openCamTick: Int, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val active by AlarmState.current.collectAsState()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -50,6 +68,7 @@ fun AlarmScreen(onClose: () -> Unit) {
             delay(500)
         }
     }
+    LaunchedEffect(openCamTick) { if (openCamTick > 0) showCam = true }
     LaunchedEffect(active) { if (active == null) onClose() }
     val a = active
     val left = if (a == null) 0L else maxOf(0L, a.endAt - now) / 1000

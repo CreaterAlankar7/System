@@ -119,34 +119,5 @@ fun StatusScreen() {
                 fontFamily = FontFamily.Monospace
             )
         }
-        Spacer(Modifier.height(16.dp))
-        Column(
-            Modifier.fillMaxWidth().background(Panel).border(2.dp, SysBlue).padding(20.dp)
-        ) {
-            Text("[ ATTRIBUTES ]", color = SysBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-            Spacer(Modifier.height(12.dp))
-            StatRow("STR", "Strength", p.str)
-            Spacer(Modifier.height(12.dp))
-            StatRow("INT", "Intelligence", p.intel)
-            Spacer(Modifier.height(12.dp))
-            StatRow("VIT", "Vitality", p.vit)
-        }
-    }
-}
-
-@Composable
-private fun StatRow(code: String, name: String, value: Int) {
-    Column {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("$code  $name", color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-            Text("$value", color = SysBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(4.dp))
-        Box(Modifier.fillMaxWidth().height(6.dp).border(1.dp, Color(0xFF2A4A78))) {
-            Box(
-                Modifier.fillMaxWidth((value / 30f).coerceIn(0f, 1f))
-                    .fillMaxHeight().background(SysBlue)
-            )
-        }
     }
 }

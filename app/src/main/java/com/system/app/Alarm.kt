@@ -37,16 +37,30 @@ object AlarmScheduler {
         set(c, q, "end", q.endHour, q.endMinute, q.id.toInt() * 2 + 1)
     }
 
+    // Next time (h:m) that falls on a day this quest is scheduled for.
+    private fun nextTrigger(q: Quest, h: Int, m: Int): Long? {
+        val now = System.currentTimeMillis()
+        for (off in 0..400) {
+            val cal = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, off)
+                set(Calendar.HOUR_OF_DAY, h)
+                set(Calendar.MINUTE, m)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (cal.timeInMillis <= now + 1000) continue
+            val d = LocalDate.of(
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH)
+            )
+            if (q.appliesOn(d)) return cal.timeInMillis
+        }
+        return null
+    }
+
     private fun set(c: Context, q: Quest, kind: String, h: Int, m: Int, req: Int) {
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) return
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, h)
-            set(Calendar.MINUTE, m)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis() + 1000) add(Calendar.DAY_OF_YEAR, 1)
-        }
+        val at = nextTrigger(q, h, m) ?: return
         val pi = PendingIntent.getBroadcast(
             c, req,
             Intent(c, AlarmReceiver::class.java).putExtra("id", q.id).putExtra("kind", kind),
@@ -57,9 +71,9 @@ object AlarmScheduler {
                 c, 0, Intent(c, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, show), pi)
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
         } else {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         }
     }
 }
@@ -73,10 +87,13 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 val q = AppDb.get(c).dao().byId(id)
                 if (q != null) {
-                    if (kind == "start") {
-                        notifyStart(c, q)
-                    } else if (q.lastDoneDay != LocalDate.now().toEpochDay()) {
-                        startAlarm(c, q)
+                    val today = LocalDate.now()
+                    if (q.appliesOn(today)) {
+                        if (kind == "start") {
+                            notifyStart(c, q)
+                        } else if (q.lastDoneDay != today.toEpochDay()) {
+                            startAlarm(c, q)
+                        }
                     }
                     AlarmScheduler.schedule(c, q)
                 }
@@ -106,8 +123,7 @@ class AlarmReceiver : BroadcastReceiver() {
             c, 0, Intent(c, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val text = "Quest started: ${q.title}. Submit proof before " +
-            "%02d:%02d.".format(q.endHour, q.endMinute)
+        val text = "Quest started: ${q.title}. Submit proof before " + fmt12(q.endHour, q.endMinute) + "."
         val n = NotificationCompat.Builder(c, "system_quests")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("[SYSTEM] NEW QUEST")

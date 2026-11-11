@@ -1,5 +1,7 @@
 package com.system.app
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,8 +9,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -20,8 +26,11 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +52,13 @@ class AlarmService : Service() {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val handler = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
+    private var focusReq: AudioFocusRequest? = null
     private var timer: Job? = null
+    private var overlay: View? = null
+    private var tickRunnable: Runnable? = null
+    private var blinkAnim: ObjectAnimator? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -75,16 +89,18 @@ class AlarmService : Service() {
             startFg(alertNote(running.title))
             return START_NOT_STICKY
         }
-        AlarmState.current.value =
-            Active(id, title, System.currentTimeMillis() + win * 60_000L, win, streak, xp)
+        val end = System.currentTimeMillis() + win * 60_000L
+        AlarmState.current.value = Active(id, title, end, win, streak, xp)
         startFg(alertNote(title))
         ring()
-        showAlarmScreen()
         timer = scope.launch {
-            val end = System.currentTimeMillis() + win * 60_000L
             while (end - System.currentTimeMillis() > 0) {
-                delay(minOf(15_000L, end - System.currentTimeMillis()))
-                if (end - System.currentTimeMillis() > 500) showAlarmScreen()
+                if (AlarmState.activityVisible) {
+                    if (overlay != null) hideOverlay()
+                } else if (overlay == null) {
+                    showOverlay()
+                }
+                delay(1000)
             }
             finish(false)
         }
@@ -99,6 +115,7 @@ class AlarmService : Service() {
         }
     }
 
+    // Used on the lock screen / screen-off case (full-screen intent).
     private fun alertNote(title: String): Notification {
         val pi = PendingIntent.getActivity(
             this, 0,
@@ -118,31 +135,101 @@ class AlarmService : Service() {
             .build()
     }
 
-    // Opens the red warning screen on top of everything (needs "Display over other apps").
-    private fun showAlarmScreen() {
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun label(text: String, size: Float, color: Int, bold: Boolean): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(color)
+            gravity = Gravity.CENTER
+            if (bold) typeface = Typeface.DEFAULT_BOLD
+        }
+
+    private fun lp(top: Int) = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { topMargin = dp(top) }
+
+    // Full-screen red warning drawn over every app (needs "Display over other apps").
+    private fun showOverlay() {
+        if (overlay != null) return
+        val a = AlarmState.current.value ?: return
+        if (!Settings.canDrawOverlays(this)) return
         runCatching {
-            if (!Settings.canDrawOverlays(this)) return
-            val wm = getSystemService(WindowManager::class.java)
-            val dot = View(this)
-            val lp = WindowManager.LayoutParams(
-                1, 1,
+            val red = 0xFFFF3B4D.toInt()
+            val warn = label("[ WARNING ]", 34f, red, true)
+            val sub = label("QUEST DEADLINE PASSED", 14f, Color.WHITE, false)
+            val title = label(a.title, 24f, Color.WHITE, true)
+            val clock = label("", 54f, red, true).apply { typeface = Typeface.MONOSPACE }
+            val hint = label("Submit proof or face the penalty.", 13f, 0xFFFFB3BA.toInt(), false)
+            val btn = label("[ SUBMIT PROOF ]", 16f, red, true).apply {
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                background = GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(2), red)
+                }
+                setOnClickListener {
+                    hideOverlay()
+                    startActivity(
+                        Intent(this@AlarmService, AlarmActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            .putExtra("camera", true)
+                    )
+                }
+            }
+            val root = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0xFF1A0004.toInt(), 0xFF4A0010.toInt())
+                )
+                isClickable = true
+                addView(warn, lp(0))
+                addView(sub, lp(10))
+                addView(title, lp(28))
+                addView(clock, lp(12))
+                addView(hint, lp(8))
+                addView(btn, lp(28))
+            }
+            val tick = object : Runnable {
+                override fun run() {
+                    val left = maxOf(0L, a.endAt - System.currentTimeMillis()) / 1000
+                    clock.text = "%02d:%02d".format(left / 60, left % 60)
+                    handler.postDelayed(this, 500)
+                }
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                 PixelFormat.TRANSLUCENT
             )
-            wm.addView(dot, lp)
-            startActivity(
-                Intent(this, AlarmActivity::class.java).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            )
-            Handler(Looper.getMainLooper()).postDelayed({
-                runCatching { wm.removeView(dot) }
-            }, 1500)
+            getSystemService(WindowManager::class.java).addView(root, params)
+            overlay = root
+            tickRunnable = tick
+            handler.post(tick)
+            blinkAnim = ObjectAnimator.ofFloat(warn, "alpha", 0.35f, 1f).apply {
+                duration = 500
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                start()
+            }
         }
+    }
+
+    private fun hideOverlay() {
+        tickRunnable?.let { handler.removeCallbacks(it) }
+        tickRunnable = null
+        blinkAnim?.cancel()
+        blinkAnim = null
+        overlay?.let { v ->
+            runCatching { getSystemService(WindowManager::class.java).removeView(v) }
+        }
+        overlay = null
     }
 
     private fun ring() {
@@ -152,6 +239,18 @@ class AlarmService : Service() {
                 AudioManager.STREAM_ALARM,
                 am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0
             )
+            // Ask other apps (music/video) to pause while the alarm is active.
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { _ -> }
+                .build()
+            focusReq = req
+            am.requestAudioFocus(req)
         }
         runCatching {
             val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -179,11 +278,16 @@ class AlarmService : Service() {
     private fun stopRing() {
         runCatching { player?.stop(); player?.release() }
         player = null
+        runCatching {
+            focusReq?.let { getSystemService(AudioManager::class.java).abandonAudioFocusRequest(it) }
+        }
+        focusReq = null
         runCatching { getSystemService(Vibrator::class.java).cancel() }
     }
 
     private fun finish(success: Boolean) {
         timer?.cancel()
+        hideOverlay()
         stopRing()
         val a = AlarmState.current.value
         AlarmState.current.value = null
@@ -232,6 +336,7 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
+        hideOverlay()
         stopRing()
         scope.cancel()
         super.onDestroy()

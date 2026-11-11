@@ -1,8 +1,8 @@
 package com.system.app
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.RepeatMode
@@ -29,20 +29,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 class AlarmActivity : ComponentActivity() {
-    private var camTick by mutableIntStateOf(0)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (intent.getBooleanExtra("camera", false)) camTick = 1
-        setContent { AlarmScreen(camTick) { finish() } }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        if (intent.getBooleanExtra("camera", false)) camTick++
+        setContent { AlarmScreen { finish() } }
     }
 
     override fun onStart() {
@@ -57,18 +49,16 @@ class AlarmActivity : ComponentActivity() {
 }
 
 @Composable
-fun AlarmScreen(openCamTick: Int, onClose: () -> Unit) {
+fun AlarmScreen(onClose: () -> Unit) {
     val ctx = LocalContext.current
     val active by AlarmState.current.collectAsState()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var showCam by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis()
             delay(500)
         }
     }
-    LaunchedEffect(openCamTick) { if (openCamTick > 0) showCam = true }
     LaunchedEffect(active) { if (active == null) onClose() }
     val a = active
     val left = if (a == null) 0L else maxOf(0L, a.endAt - now) / 1000
@@ -78,53 +68,42 @@ fun AlarmScreen(openCamTick: Int, onClose: () -> Unit) {
         label = "a"
     )
 
-    if (showCam && a != null) {
-        CameraProof(
-            a.questId,
-            onCaptured = { _ ->
-                ctx.startService(
-                    Intent(ctx, AlarmService::class.java).setAction(AlarmService.ACTION_PROOF)
-                )
-                showCam = false
-            },
-            onCancel = { showCam = false }
-        )
-    } else {
-        Box(
-            Modifier.fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color(0xFF1A0004), Color(0xFF4A0010)))),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF1A0004), Color(0xFF4A0010)))),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "[ WARNING ]", color = SysRed, fontSize = 32.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 4.sp,
+                modifier = Modifier.alpha(blink)
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("QUEST DEADLINE PASSED", color = Color.White, fontSize = 14.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(24.dp))
+            Column(
+                Modifier.fillMaxWidth()
+                    .border(2.dp, SysRed)
+                    .background(Color(0xE6200008))
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
-                    "[ WARNING ]", color = SysRed, fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = 4.sp,
-                    modifier = Modifier.alpha(blink)
+                    a?.title ?: "", color = Color.White, fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(10.dp))
-                Text("QUEST DEADLINE PASSED", color = Color.White, fontSize = 14.sp, letterSpacing = 2.sp)
-                Spacer(Modifier.height(24.dp))
-                Column(
-                    Modifier.fillMaxWidth()
-                        .border(2.dp, SysRed)
-                        .background(Color(0xE6200008))
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        a?.title ?: "", color = Color.White, fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "%02d:%02d".format(left / 60, left % 60), color = SysRed,
-                        fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Submit proof or face the penalty.", color = Color(0xFFFFB3BA), fontSize = 13.sp)
-                }
-                Spacer(Modifier.height(24.dp))
-                SysBtn("[ SUBMIT PROOF ]", SysRed, Modifier.fillMaxWidth()) { showCam = true }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "%02d:%02d".format(left / 60, left % 60), color = SysRed,
+                    fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Deadline missed. Penalty incoming.", color = Color(0xFFFFB3BA), fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(24.dp))
+            SysBtn("[ PENALTY QUEST ]", SysRed, Modifier.fillMaxWidth()) {
+                Toast.makeText(ctx, "Penalty quest: coming soon", Toast.LENGTH_SHORT).show()
             }
         }
     }

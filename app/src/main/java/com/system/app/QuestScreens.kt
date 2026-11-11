@@ -185,7 +185,7 @@ fun QuestCard(q: Quest, st: QStatus, onProof: () -> Unit) {
                 Text(q.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("${q.type}  •  ${q.stat}  •  $label  •  FAILS ${q.failStreak}", color = tone,
                     fontSize = 11.sp, letterSpacing = 1.sp)
-                Text("ALARM ${q.windowMin} MIN  •  REWARD ${q.xpReward()} XP", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
+                Text("ALARM 15 SEC  •  REWARD ${q.xpReward()} XP", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
             }
             Text("🔒", fontSize = 18.sp)
         }

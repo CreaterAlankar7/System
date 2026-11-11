@@ -31,6 +31,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ class AlarmService : Service() {
         private const val CH_RESULT = "system_result"
         private const val NOTIF_ID = 42
         private const val FAIL_PENALTY = 10
+        private const val WARN_MS = 15_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -86,10 +88,12 @@ class AlarmService : Service() {
         val xp = intent?.getIntExtra("xp", 0) ?: 0
         val running = AlarmState.current.value
         if (running != null) {
+            // Another quest hit its deadline while a warning is showing: fail it right away.
             startFg(alertNote(running.title))
+            failNow(id, title, streak, win)
             return START_NOT_STICKY
         }
-        val end = System.currentTimeMillis() + win * 60_000L
+        val end = System.currentTimeMillis() + WARN_MS
         AlarmState.current.value = Active(id, title, end, win, streak, xp)
         startFg(alertNote(title))
         ring()
@@ -135,6 +139,16 @@ class AlarmService : Service() {
             .build()
     }
 
+    private fun failNow(id: Long, title: String, streak: Int, win: Int) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                AppDb.get(this@AlarmService).dao().setStreak(id, streak + 1, win)
+            }
+            val delta = PlayerStore.penalty(this@AlarmService, FAIL_PENALTY)
+            notifyResult(Active(id, title, 0L, win, streak, 0), false, streak + 1, delta)
+        }
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun label(text: String, size: Float, color: Int, bold: Boolean): TextView =
@@ -161,20 +175,15 @@ class AlarmService : Service() {
             val sub = label("QUEST DEADLINE PASSED", 14f, Color.WHITE, false)
             val title = label(a.title, 24f, Color.WHITE, true)
             val clock = label("", 54f, red, true).apply { typeface = Typeface.MONOSPACE }
-            val hint = label("Submit proof or face the penalty.", 13f, 0xFFFFB3BA.toInt(), false)
-            val btn = label("[ SUBMIT PROOF ]", 16f, red, true).apply {
+            val hint = label("Deadline missed. Penalty incoming.", 13f, 0xFFFFB3BA.toInt(), false)
+            val btn = label("[ PENALTY QUEST ]", 16f, red, true).apply {
                 setPadding(dp(16), dp(14), dp(16), dp(14))
                 background = GradientDrawable().apply {
                     setColor(Color.TRANSPARENT)
                     setStroke(dp(2), red)
                 }
                 setOnClickListener {
-                    hideOverlay()
-                    startActivity(
-                        Intent(this@AlarmService, AlarmActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            .putExtra("camera", true)
-                    )
+                    Toast.makeText(this@AlarmService, "Penalty quest: coming soon", Toast.LENGTH_SHORT).show()
                 }
             }
             val root = LinearLayout(this).apply {
@@ -296,14 +305,13 @@ class AlarmService : Service() {
             return
         }
         val streak = if (success) 0 else a.streak + 1
-        val win = if (!success && streak % 3 == 0) minOf(30, a.win + 5) else a.win
         scope.launch {
             withContext(Dispatchers.IO) {
                 val dao = AppDb.get(this@AlarmService).dao()
                 if (success) {
                     dao.markDone(a.questId, java.time.LocalDate.now().toEpochDay())
                 } else {
-                    dao.setStreak(a.questId, streak, win)
+                    dao.setStreak(a.questId, streak, a.win)
                 }
             }
             val delta = if (success) {
@@ -311,18 +319,17 @@ class AlarmService : Service() {
             } else {
                 PlayerStore.penalty(this@AlarmService, FAIL_PENALTY)
             }
-            notifyResult(a, success, streak, win, delta)
+            notifyResult(a, success, streak, delta)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
-    private fun notifyResult(a: Active, ok: Boolean, streak: Int, win: Int, delta: Int) {
+    private fun notifyResult(a: Active, ok: Boolean, streak: Int, delta: Int) {
         val text = if (ok) {
             "Quest cleared late: ${a.title}. +$delta XP."
         } else {
-            "Quest failed: ${a.title}. $delta XP. Fail streak: $streak." +
-                (if (win > a.win) " Alarm window increased to $win min." else "")
+            "Quest failed: ${a.title}. $delta XP. Fail streak: $streak."
         }
         val n = NotificationCompat.Builder(this, CH_RESULT)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)

@@ -144,8 +144,7 @@ class AlarmService : Service() {
             withContext(Dispatchers.IO) {
                 AppDb.get(this@AlarmService).dao().setStreak(id, streak + 1, win)
             }
-            val delta = PlayerStore.penalty(this@AlarmService, FAIL_PENALTY)
-            notifyResult(Active(id, title, 0L, win, streak, 0), false, streak + 1, delta)
+            Rewards.loss(this@AlarmService, FAIL_PENALTY, "Quest failed: $title")
         }
     }
 
@@ -314,12 +313,11 @@ class AlarmService : Service() {
                     dao.setStreak(a.questId, streak, a.win)
                 }
             }
-            val delta = if (success) {
-                PlayerStore.award(this@AlarmService, a.xp / 2, "", 0)
+            if (success) {
+                Rewards.gain(this@AlarmService, a.xp / 2, "", 0, "Quest cleared late: ${a.title}")
             } else {
-                PlayerStore.penalty(this@AlarmService, FAIL_PENALTY)
+                Rewards.loss(this@AlarmService, FAIL_PENALTY, "Quest failed: ${a.title}")
             }
-            notifyResult(a, success, streak, delta)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }

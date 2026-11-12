@@ -292,18 +292,11 @@ fun QuestHome() {
     var tab by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf(false) }
     var proofFor by remember { mutableStateOf<Quest?>(null) }
-    var msg by remember { mutableStateOf<String?>(null) }
     var nowM by remember { mutableIntStateOf(nowMin()) }
     LaunchedEffect(Unit) {
         while (true) {
             nowM = nowMin()
             delay(10_000)
-        }
-    }
-    LaunchedEffect(msg) {
-        if (msg != null) {
-            delay(4000)
-            msg = null
         }
     }
     val today = LocalDate.now()
@@ -318,12 +311,8 @@ fun QuestHome() {
                 pq.id,
                 onCaptured = { _ ->
                     scope.launch { dao.markDone(pq.id, LocalDate.now().toEpochDay()) }
-                    val before = PlayerStore.read(ctx).level
-                    PlayerStore.award(ctx, pq.xpReward(), pq.stat, 1)
-                    val after = PlayerStore.read(ctx).level
+                    Rewards.gain(ctx, pq.xpReward(), pq.stat, 1, "Quest cleared: ${pq.title}")
                     proofFor = null
-                    msg = "[SYSTEM]: Quest cleared. +${pq.xpReward()} XP, +1 ${pq.stat}." +
-                        (if (after > before) "  LEVEL UP! Lv.$after" else "")
                 },
                 onCancel = { proofFor = null }
             )
@@ -338,6 +327,7 @@ fun QuestHome() {
                             )
                         )
                     }
+                    SysPopup.post(ctx, "NOTIFICATION", "[Quest registered: $t]", 0, null)
                     adding = false
                 },
                 onCancel = { adding = false }
@@ -349,13 +339,6 @@ fun QuestHome() {
                     SysBtn("[ STATUS ]", if (tab == 1) SysBlue else Dim, Modifier.weight(1f)) { tab = 1 }
                 }
                 Spacer(Modifier.height(12.dp))
-                if (msg != null) {
-                    Text(
-                        msg ?: "", color = Cyan, fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.fillMaxWidth().border(2.dp, Cyan).background(PanelBg).padding(12.dp)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
                 if (tab == 1) {
                     Box(Modifier.weight(1f).fillMaxWidth()) { StatusScreen() }
                 } else {

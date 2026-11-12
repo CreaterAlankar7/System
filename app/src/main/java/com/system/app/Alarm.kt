@@ -90,7 +90,11 @@ class AlarmReceiver : BroadcastReceiver() {
                     val today = LocalDate.now()
                     if (q.appliesOn(today)) {
                         if (kind == "start") {
-                            notifyStart(c, q)
+                            SysPopup.post(
+                                c, "QUEST INFO",
+                                "[Daily Quest: ${q.title} has arrived.]\nReward: +${q.xpReward()} XP",
+                                0, "Deadline  " + fmt12(q.endHour, q.endMinute)
+                            )
                         } else if (q.lastDoneDay != today.toEpochDay()) {
                             startAlarm(c, q)
                         }

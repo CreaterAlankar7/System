@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val Pale = Color(0xFFB9D9FF)
-private val PanelDark = Color(0xE6050C1A)
+private val PanelDark = Color(0xFA050C1A)
 private val Soft2 = Color(0xFFB9D9FF)
 private val Dim3 = Color(0xFF5E7FA8)
 

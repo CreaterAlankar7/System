@@ -91,6 +91,7 @@ fun AddQuest(
     var eh by remember { mutableIntStateOf(7) }
     var em by remember { mutableIntStateOf(30) }
     var picking by remember { mutableStateOf<String?>(null) }
+    var pickingDate by remember { mutableStateOf(false) }
     val validTime = eh * 60 + em > sh * 60 + sm
     val daysOk = rtype != "DAYS" || mask != 0
     val ok = title.isNotBlank() && validTime && daysOk
@@ -161,9 +162,7 @@ fun AddQuest(
             }
             if (rtype == "DATE") {
                 Spacer(Modifier.height(10.dp))
-                CalendarPicker(date) { date = it }
-                Spacer(Modifier.height(4.dp))
-                Text("SELECTED: " + fmtDate(date), color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                TimeRow("DATE", fmtDate(date), Cyan) { pickingDate = true }
             }
             Spacer(Modifier.height(16.dp))
             Text("TIME  (tap to change)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
@@ -201,17 +200,25 @@ fun AddQuest(
             }
         }
     }
+    if (pickingDate) {
+        Modal(null) {
+            DatePickerPopup(date, { d ->
+                date = d
+                pickingDate = false
+            }) { pickingDate = false }
+        }
+    }
     val which = picking
     if (which != null) {
         Modal(null) {
             if (which == "start") {
-                TimePickerPanel("START TIME", sh, sm, { h, m ->
+                TimePickerPopup("START TIME", sh, sm, { h, m ->
                     sh = h
                     sm = m
                     picking = null
                 }) { picking = null }
             } else {
-                TimePickerPanel("DEADLINE", eh, em, { h, m ->
+                TimePickerPopup("DEADLINE", eh, em, { h, m ->
                     eh = h
                     em = m
                     picking = null

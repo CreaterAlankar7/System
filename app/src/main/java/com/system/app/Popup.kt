@@ -1,8 +1,10 @@
 package com.system.app
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -15,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
@@ -33,19 +36,61 @@ data class PopupMsg(val title: String, val body: String, val kind: Int, val big:
 
 object SysPopup {
     val queue = ConcurrentLinkedQueue<PopupMsg>()
+    @Volatile var busyUntil = 0L
+    private const val CH_MSG = "system_popup_msg"
 
     // kind: 0 = info (white), 1 = gain (cyan), 2 = loss (red)
     fun post(c: Context, title: String, body: String, kind: Int = 0, big: String? = null) {
-        queue.add(PopupMsg(title, body, kind, big))
+        val m = PopupMsg(title, body, kind, big)
+        queue.add(m)
         val app = c.applicationContext
-        ContextCompat.startForegroundService(app, Intent(app, PopupService::class.java))
+        try {
+            ContextCompat.startForegroundService(app, Intent(app, PopupService::class.java))
+        } catch (e: Exception) {
+            // Service could not start from the background: show a normal notification instead.
+            queue.remove(m)
+            notifyFallback(app, m, false)
+        }
+    }
+
+    // Normal heads-up notification, or (fullScreen) a notification that wakes the screen
+    // and opens PopupActivity over the lock screen.
+    fun notifyFallback(c: Context, m: PopupMsg, fullScreen: Boolean) {
+        val nm = c.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CH_MSG, "System Messages", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val nid = (System.currentTimeMillis() % 100000).toInt() + 5000
+        val text = m.body.replace("\n", " ") + (if (m.big != null) "  " + m.big else "")
+        val b = NotificationCompat.Builder(c, CH_MSG)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("[SYSTEM] " + m.title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+        if (fullScreen) {
+            val pi = PendingIntent.getActivity(
+                c, nid,
+                Intent(c, PopupActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra("title", m.title)
+                    .putExtra("body", m.body)
+                    .putExtra("kind", m.kind)
+                    .putExtra("big", m.big)
+                    .putExtra("nid", nid),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            b.setFullScreenIntent(pi, true).setContentIntent(pi)
+        }
+        nm.notify(nid, b.build())
     }
 }
 
 class PopupService : Service() {
     companion object {
         private const val CH_FG = "system_popup_fg"
-        private const val CH_FB = "system_popup_fallback"
         private const val FG_ID = 43
         private const val SHOW_MS = 7000L
         private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -64,9 +109,6 @@ class PopupService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CH_FG, "System Popups", NotificationManager.IMPORTANCE_MIN)
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CH_FB, "System Messages", NotificationManager.IMPORTANCE_HIGH)
         )
     }
 
@@ -92,8 +134,9 @@ class PopupService : Service() {
 
     private fun pump() {
         if (view != null) return
-        if (AlarmState.current.value != null) {
-            // Wait until the warning alarm is over.
+        val now = System.currentTimeMillis()
+        if (AlarmState.current.value != null || now < SysPopup.busyUntil) {
+            // Wait until the warning alarm / previous lock-screen popup is over.
             handler.removeCallbacks(pumpRun)
             handler.postDelayed(pumpRun, 500)
             return
@@ -104,8 +147,18 @@ class PopupService : Service() {
             stopSelf()
             return
         }
-        if (!Settings.canDrawOverlays(this) || !show(m)) {
-            fallback(m)
+        val dark = !getSystemService(PowerManager::class.java).isInteractive ||
+            getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        if (dark) {
+            // Screen off or locked: wake it and show the popup over the lock screen.
+            SysPopup.notifyFallback(this, m, true)
+            SysPopup.busyUntil = now + SHOW_MS + 800
+            handler.removeCallbacks(pumpRun)
+            handler.postDelayed(pumpRun, SHOW_MS + 800)
+        } else if (Settings.canDrawOverlays(this) && show(m)) {
+            // shown as an overlay over every app
+        } else {
+            SysPopup.notifyFallback(this, m, false)
             pump()
         }
     }
@@ -123,7 +176,7 @@ class PopupService : Service() {
             getSystemService(WindowManager::class.java).addView(v, params)
             view = v
             v.alpha = 0f
-            v.animate().alpha(1f).setDuration(250).start()
+            v.animate().alpha(1f).setDuration(200).start()
             runCatching {
                 getSystemService(Vibrator::class.java)
                     .vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -144,19 +197,6 @@ class PopupService : Service() {
         view = null
         runCatching { getSystemService(WindowManager::class.java).removeView(v) }
         handler.postDelayed(pumpRun, 250)
-    }
-
-    private fun fallback(m: PopupMsg) {
-        val text = m.body.replace("\n", " ") + (if (m.big != null) "  " + m.big else "")
-        val n = NotificationCompat.Builder(this, CH_FB)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("[SYSTEM] " + m.title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setAutoCancel(true)
-            .build()
-        getSystemService(NotificationManager::class.java)
-            .notify((System.currentTimeMillis() % 100000).toInt() + 5000, n)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()

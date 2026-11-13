@@ -93,7 +93,7 @@ fun QuestInfoHeader(title: String) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Wheel(items: List<String>, initial: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun Wheel(items: List<String>, initial: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val itemH = 40.dp
     val itemPx = with(LocalDensity.current) { itemH.toPx() }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initial)

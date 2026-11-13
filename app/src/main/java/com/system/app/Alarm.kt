@@ -1,14 +1,11 @@
 package com.system.app
 
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +54,8 @@ object AlarmScheduler {
         return null
     }
 
+    // Alarm-clock alarms fire at the exact second, ignore battery saving, and
+    // allow starting services / overlays from the background.
     private fun set(c: Context, q: Quest, kind: String, h: Int, m: Int, req: Int) {
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) return
@@ -66,15 +65,11 @@ object AlarmScheduler {
             Intent(c, AlarmReceiver::class.java).putExtra("id", q.id).putExtra("kind", kind),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        if (kind == "end") {
-            val show = PendingIntent.getActivity(
-                c, 0, Intent(c, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
-        } else {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-        }
+        val show = PendingIntent.getActivity(
+            c, 0, Intent(c, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
     }
 }
 
@@ -101,6 +96,8 @@ class AlarmReceiver : BroadcastReceiver() {
                     }
                     AlarmScheduler.schedule(c, q)
                 }
+            } catch (e: Exception) {
+                // never crash from a broadcast
             } finally {
                 pr.finish()
             }
@@ -116,27 +113,6 @@ class AlarmReceiver : BroadcastReceiver() {
             .putExtra("streak", q.failStreak)
             .putExtra("xp", q.xpReward())
         ContextCompat.startForegroundService(c, si)
-    }
-
-    private fun notifyStart(c: Context, q: Quest) {
-        val nm = c.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel("system_quests", "System Quests", NotificationManager.IMPORTANCE_HIGH)
-        )
-        val pi = PendingIntent.getActivity(
-            c, 0, Intent(c, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val text = "Quest started: ${q.title}. Submit proof before " + fmt12(q.endHour, q.endMinute) + "."
-        val n = NotificationCompat.Builder(c, "system_quests")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("[SYSTEM] NEW QUEST")
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setAutoCancel(true)
-            .setContentIntent(pi)
-            .build()
-        nm.notify(2000 + q.id.toInt(), n)
     }
 }
 

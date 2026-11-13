@@ -273,8 +273,8 @@ class AlarmService : Service() {
                 setDataSource(this@AlarmService, uri)
                 isLooping = true
                 setWakeMode(this@AlarmService, PowerManager.PARTIAL_WAKE_LOCK)
-                prepare()
-                start()
+                setOnPreparedListener { it.start() }
+                prepareAsync()
             }
         }
         runCatching {

@@ -6,9 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,6 +75,7 @@ private fun TimeRow(label: String, value: String, tone: Color = SysBlue, onClick
     }
 }
 
+// Quest registration shown as a popup window (not full screen).
 @Composable
 fun AddQuest(
     onSave: (String, Int, Int, Int, Int, String, String, Int, Long) -> Unit,
@@ -97,100 +96,96 @@ fun AddQuest(
     val ok = title.isNotBlank() && validTime && daysOk
     val reward = ((eh * 60 + em) - (sh * 60 + sm)).coerceAtLeast(0) * 2
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-            SysFrame(Modifier.fillMaxWidth()) {
-                QuestInfoHeader("NEW QUEST")
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "[New Quest: registration]", color = Soft, fontSize = 13.sp,
-                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(14.dp))
-                Box(Modifier.fillMaxWidth().border(1.dp, SysBlue).background(PanelBg).padding(14.dp)) {
-                    if (title.isEmpty()) Text("Quest name (e.g. 10 Pushups)", color = Dim, fontSize = 16.sp)
-                    BasicTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        singleLine = true,
-                        textStyle = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace),
-                        cursorBrush = SolidColor(SysBlue),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                Text("TYPE", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("STR", "INT", "VIT").forEach { s ->
-                        SysBtn("[ $s ]", if (stat == s) SysBlue else Dim, Modifier.weight(1f)) { stat = s }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text("STR: fitness  •  INT: study  •  VIT: habits", color = Dim, fontSize = 11.sp)
-                Spacer(Modifier.height(16.dp))
-                Text("REPEAT", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("DAILY", "DAYS", "DATE").forEach { k ->
-                        SysBtn("[ $k ]", if (rtype == k) SysBlue else Dim, Modifier.weight(1f)) { rtype = k }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text("DAILY: every day  •  DAYS: pick weekdays  •  DATE: one date", color = Dim, fontSize = 11.sp)
-                if (rtype == "DAYS") {
-                    Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN").forEachIndexed { i, d ->
-                            val on = ((mask shr i) and 1) == 1
-                            Box(
-                                Modifier.weight(1f)
-                                    .border(1.dp, if (on) SysBlue else Dim)
-                                    .background(if (on) SysBlue.copy(alpha = 0.25f) else Color.Transparent)
-                                    .clickable { mask = mask xor (1 shl i) }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    d, color = if (on) Color.White else Dim,
-                                    fontSize = 10.sp, fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                    if (mask == 0) {
-                        Spacer(Modifier.height(4.dp))
-                        Text("Pick at least one day.", color = SysRed, fontSize = 12.sp)
-                    }
-                }
-                if (rtype == "DATE") {
-                    Spacer(Modifier.height(10.dp))
-                    CalendarPicker(date) { date = it }
-                    Spacer(Modifier.height(4.dp))
-                    Text("SELECTED: " + fmtDate(date), color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(16.dp))
-                Text("TIME  (tap to change)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                Spacer(Modifier.height(8.dp))
-                TimeRow("START", fmt12(sh, sm)) { picking = "start" }
-                Spacer(Modifier.height(8.dp))
-                TimeRow("DEADLINE", fmt12(eh, em), SysRed) { picking = "end" }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "REWARD: $reward XP  (2 XP per minute)", color = Cyan,
-                    fontSize = 13.sp, fontWeight = FontWeight.Bold
-                )
-                if (!validTime) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Deadline must be after start time.", color = SysRed, fontSize = 12.sp)
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "WARNING: Time and schedule are LOCKED after registering. Proof not submitted by the deadline triggers the alarm.",
-                    color = SysRed, fontSize = 12.sp, textAlign = TextAlign.Center,
+    Modal(null) {
+        PopupFrame("NEW QUEST") {
+            Text(
+                "[New Quest: registration]", color = Soft, fontSize = 13.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(14.dp))
+            Box(Modifier.fillMaxWidth().border(1.dp, SysBlue).background(PanelBg).padding(14.dp)) {
+                if (title.isEmpty()) Text("Quest name (e.g. 10 Pushups)", color = Dim, fontSize = 16.sp)
+                BasicTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace),
+                    cursorBrush = SolidColor(SysBlue),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+            Spacer(Modifier.height(16.dp))
+            Text("TYPE", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("STR", "INT", "VIT").forEach { s ->
+                    SysBtn("[ $s ]", if (stat == s) SysBlue else Dim, Modifier.weight(1f)) { stat = s }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("STR: fitness  •  INT: study  •  VIT: habits", color = Dim, fontSize = 11.sp)
+            Spacer(Modifier.height(16.dp))
+            Text("REPEAT", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("DAILY", "DAYS", "DATE").forEach { k ->
+                    SysBtn("[ $k ]", if (rtype == k) SysBlue else Dim, Modifier.weight(1f)) { rtype = k }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("DAILY: every day  •  DAYS: pick weekdays  •  DATE: one date", color = Dim, fontSize = 11.sp)
+            if (rtype == "DAYS") {
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN").forEachIndexed { i, d ->
+                        val on = ((mask shr i) and 1) == 1
+                        Box(
+                            Modifier.weight(1f)
+                                .border(1.dp, if (on) SysBlue else Dim)
+                                .background(if (on) SysBlue.copy(alpha = 0.25f) else Color.Transparent)
+                                .clickable { mask = mask xor (1 shl i) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                d, color = if (on) Color.White else Dim,
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                if (mask == 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Pick at least one day.", color = SysRed, fontSize = 12.sp)
+                }
+            }
+            if (rtype == "DATE") {
+                Spacer(Modifier.height(10.dp))
+                CalendarPicker(date) { date = it }
+                Spacer(Modifier.height(4.dp))
+                Text("SELECTED: " + fmtDate(date), color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("TIME  (tap to change)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            TimeRow("START", fmt12(sh, sm)) { picking = "start" }
+            Spacer(Modifier.height(8.dp))
+            TimeRow("DEADLINE", fmt12(eh, em), SysRed) { picking = "end" }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "REWARD: $reward XP  (2 XP per minute)", color = Cyan,
+                fontSize = 13.sp, fontWeight = FontWeight.Bold
+            )
+            if (!validTime) {
+                Spacer(Modifier.height(6.dp))
+                Text("Deadline must be after start time.", color = SysRed, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "WARNING: Time and schedule are LOCKED after registering. Proof not submitted by the deadline triggers the alarm.",
+                color = SysRed, fontSize = 12.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SysBtn("[ CANCEL ]", Dim, Modifier.weight(1f)) { onCancel() }
@@ -205,27 +200,22 @@ fun AddQuest(
                 }
             }
         }
-        val which = picking
-        if (which != null) {
-            Box(
-                Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(Modifier.padding(20.dp)) {
-                    if (which == "start") {
-                        TimePickerPanel("START TIME", sh, sm, { h, m ->
-                            sh = h
-                            sm = m
-                            picking = null
-                        }) { picking = null }
-                    } else {
-                        TimePickerPanel("DEADLINE", eh, em, { h, m ->
-                            eh = h
-                            em = m
-                            picking = null
-                        }) { picking = null }
-                    }
-                }
+    }
+    val which = picking
+    if (which != null) {
+        Modal(null) {
+            if (which == "start") {
+                TimePickerPanel("START TIME", sh, sm, { h, m ->
+                    sh = h
+                    sm = m
+                    picking = null
+                }) { picking = null }
+            } else {
+                TimePickerPanel("DEADLINE", eh, em, { h, m ->
+                    eh = h
+                    em = m
+                    picking = null
+                }) { picking = null }
             }
         }
     }
@@ -289,8 +279,9 @@ fun QuestHome() {
     val quests by dao.all().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     LaunchedEffect(quests) { quests.forEach { AlarmScheduler.schedule(ctx, it) } }
-    var tab by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var statusOpen by remember { mutableStateOf(false) }
     var proofFor by remember { mutableStateOf<Quest?>(null) }
     var nowM by remember { mutableIntStateOf(nowMin()) }
     LaunchedEffect(Unit) {
@@ -316,68 +307,93 @@ fun QuestHome() {
                 },
                 onCancel = { proofFor = null }
             )
-        } else if (adding) {
-            AddQuest(
-                onSave = { t, a, b, c, d, s, rt, dm, dd ->
-                    scope.launch {
-                        dao.insert(
-                            Quest(
-                                title = t, hour = a, minute = b, endHour = c, endMinute = d,
-                                stat = s, repeatType = rt, daysMask = dm, dateDay = dd
-                            )
-                        )
-                    }
-                    SysPopup.post(ctx, "NOTIFICATION", "[Quest registered: $t]", 0, null)
-                    adding = false
-                },
-                onCancel = { adding = false }
-            )
         } else {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SysBtn("[ QUESTS ]", if (tab == 0) SysBlue else Dim, Modifier.weight(1f)) { tab = 0 }
-                    SysBtn("[ STATUS ]", if (tab == 1) SysBlue else Dim, Modifier.weight(1f)) { tab = 1 }
-                }
+                NavBar(
+                    onMenu = { menuOpen = true },
+                    onStatus = { statusOpen = true },
+                    onProfile = { SysPopup.post(ctx, "PROFILE", "Player profile: coming soon.", 0, null) }
+                )
                 Spacer(Modifier.height(12.dp))
-                if (tab == 1) {
-                    Box(Modifier.weight(1f).fillMaxWidth()) { StatusScreen() }
-                } else {
-                    SysFrame(Modifier.weight(1f).fillMaxWidth()) {
-                        QuestInfoHeader("QUEST INFO")
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            if (quests.isEmpty()) "[No quests registered.]" else "[Daily Quests have arrived.]",
-                            color = Soft, fontSize = 13.sp, textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(), style = GlowStyle
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "GOAL", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center, textDecoration = TextDecoration.Underline,
-                            modifier = Modifier.fillMaxWidth(), style = GlowStyle
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        if (quests.isEmpty()) {
-                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Text("Register a quest to begin.", color = Dim, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-                            }
-                        } else {
-                            LazyColumn(Modifier.weight(1f)) {
-                                items(quests, key = { it.id }) { q ->
-                                    QuestRow(q, statusOf(q, nowM, today)) { proofFor = q }
-                                }
+                SysFrame(Modifier.weight(1f).fillMaxWidth()) {
+                    QuestInfoHeader("QUEST INFO")
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        if (quests.isEmpty()) "[No quests registered.]" else "[Daily Quests have arrived.]",
+                        color = Soft, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(), style = GlowStyle
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "GOAL", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center, textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.fillMaxWidth(), style = GlowStyle
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    if (quests.isEmpty()) {
+                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text("Register a quest to begin.", color = Dim, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else {
+                        LazyColumn(Modifier.weight(1f)) {
+                            items(quests, key = { it.id }) { q ->
+                                QuestRow(q, statusOf(q, nowM, today)) { proofFor = q }
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "WARNING: Failure to complete the daily quest will result in an appropriate penalty.",
-                            color = Ice, fontSize = 12.sp, textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
                     }
-                    Spacer(Modifier.height(12.dp))
-                    SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) { adding = true }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "WARNING: Failure to complete the daily quest will result in an appropriate penalty.",
+                        color = Ice, fontSize = 12.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
+                Spacer(Modifier.height(12.dp))
+                SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) { adding = true }
+            }
+
+            if (menuOpen) {
+                Modal({ menuOpen = false }) {
+                    PopupFrame("MENU") {
+                        SysBtn("[ STATUS ]", modifier = Modifier.fillMaxWidth()) {
+                            menuOpen = false
+                            statusOpen = true
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        SysBtn("[ PROFILE ]", modifier = Modifier.fillMaxWidth()) {
+                            menuOpen = false
+                            SysPopup.post(ctx, "PROFILE", "Player profile: coming soon.", 0, null)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        SysBtn("[ CLOSE ]", Dim, Modifier.fillMaxWidth()) { menuOpen = false }
+                    }
+                }
+            }
+            if (statusOpen) {
+                Modal({ statusOpen = false }) {
+                    PopupFrame("STATUS") {
+                        StatusPopupContent()
+                        Spacer(Modifier.height(16.dp))
+                        SysBtn("[ OK ]", modifier = Modifier.fillMaxWidth()) { statusOpen = false }
+                    }
+                }
+            }
+            if (adding) {
+                AddQuest(
+                    onSave = { t, a, b, c, d, s, rt, dm, dd ->
+                        scope.launch {
+                            dao.insert(
+                                Quest(
+                                    title = t, hour = a, minute = b, endHour = c, endMinute = d,
+                                    stat = s, repeatType = rt, daysMask = dm, dateDay = dd
+                                )
+                            )
+                        }
+                        SysPopup.post(ctx, "NOTIFICATION", "[Quest registered: $t]", 0, null)
+                        adding = false
+                    },
+                    onCancel = { adding = false }
+                )
             }
         }
     }

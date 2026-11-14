@@ -23,6 +23,7 @@ class PopupActivity : ComponentActivity() {
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        SysSound.play(this)
         val title = intent.getStringExtra("title") ?: "NOTIFICATION"
         val body = intent.getStringExtra("body") ?: ""
         val kind = intent.getIntExtra("kind", 0)

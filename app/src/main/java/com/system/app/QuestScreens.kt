@@ -1,5 +1,8 @@
 package com.system.app
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -289,6 +292,8 @@ fun QuestHome() {
     var adding by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var statusOpen by remember { mutableStateOf(false) }
+    var profileOpen by remember { mutableStateOf(false) }
+    var photoVersion by remember { mutableIntStateOf(0) }
     var proofFor by remember { mutableStateOf<Quest?>(null) }
     var nowM by remember { mutableIntStateOf(nowMin()) }
     LaunchedEffect(Unit) {
@@ -298,6 +303,17 @@ fun QuestHome() {
         }
     }
     val today = LocalDate.now()
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            if (ProfileStore.saveFrom(ctx, uri)) {
+                photoVersion++
+                SysPopup.post(ctx, "NOTIFICATION", "[Profile photo updated.]", 0, null)
+            } else {
+                SysPopup.post(ctx, "NOTIFICATION", "Could not load that photo.", 2, null)
+            }
+        }
+    }
 
     Box(
         Modifier.fillMaxSize()
@@ -316,10 +332,11 @@ fun QuestHome() {
             )
         } else {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                NavBar(
+                TopBar(
+                    photoVersion = photoVersion,
                     onMenu = { menuOpen = true },
                     onStatus = { statusOpen = true },
-                    onProfile = { SysPopup.post(ctx, "PROFILE", "Player profile: coming soon.", 0, null) }
+                    onProfile = { profileOpen = true }
                 )
                 Spacer(Modifier.height(12.dp))
                 SysFrame(Modifier.weight(1f).fillMaxWidth()) {
@@ -369,7 +386,7 @@ fun QuestHome() {
                         Spacer(Modifier.height(10.dp))
                         SysBtn("[ PROFILE ]", modifier = Modifier.fillMaxWidth()) {
                             menuOpen = false
-                            SysPopup.post(ctx, "PROFILE", "Player profile: coming soon.", 0, null)
+                            profileOpen = true
                         }
                         Spacer(Modifier.height(10.dp))
                         SysBtn("[ CLOSE ]", Dim, Modifier.fillMaxWidth()) { menuOpen = false }
@@ -382,6 +399,21 @@ fun QuestHome() {
                         StatusPopupContent()
                         Spacer(Modifier.height(16.dp))
                         SysBtn("[ OK ]", modifier = Modifier.fillMaxWidth()) { statusOpen = false }
+                    }
+                }
+            }
+            if (profileOpen) {
+                Modal({ profileOpen = false }) {
+                    PopupFrame("PROFILE") {
+                        ProfileContent(
+                            photoVersion = photoVersion,
+                            onChange = {
+                                picker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            onClose = { profileOpen = false }
+                        )
                     }
                 }
             }

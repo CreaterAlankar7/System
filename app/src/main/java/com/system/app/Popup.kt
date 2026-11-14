@@ -175,6 +175,7 @@ class PopupService : Service() {
             )
             getSystemService(WindowManager::class.java).addView(v, params)
             view = v
+            SysSound.play(this)
             v.alpha = 0f
             v.animate().alpha(1f).setDuration(200).start()
             runCatching {

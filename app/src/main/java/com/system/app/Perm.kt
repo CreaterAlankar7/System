@@ -18,7 +18,6 @@ enum class Perm(val title: String, val why: String, val runtime: String?) {
     FULLSCREEN("FULL-SCREEN ALERT", "The warning alarm must appear even on the lock screen.", null),
     OVERLAY("DISPLAY OVER APPS", "The warning must appear over everything, even while you use your phone.", null),
     CAMERA("CAMERA", "Proof of completion must be captured live.", Manifest.permission.CAMERA),
-    MIC("MICROPHONE", "The System must hear your voice commands, Player.", Manifest.permission.RECORD_AUDIO),
     BATTERY("UNRESTRICTED BATTERY", "The System must never be shut down in the background.", null);
 
     fun granted(c: Context): Boolean = when (this) {
@@ -30,7 +29,6 @@ enum class Perm(val title: String, val why: String, val runtime: String?) {
             (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).canUseFullScreenIntent()
         OVERLAY -> Settings.canDrawOverlays(c)
         CAMERA -> ContextCompat.checkSelfPermission(c, runtime!!) == PackageManager.PERMISSION_GRANTED
-        MIC -> ContextCompat.checkSelfPermission(c, runtime!!) == PackageManager.PERMISSION_GRANTED
         BATTERY -> (c.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .isIgnoringBatteryOptimizations(c.packageName)
     }
@@ -45,7 +43,6 @@ enum class Perm(val title: String, val why: String, val runtime: String?) {
             NOTIF -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, c.packageName)
             CAMERA -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)
-            MIC -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)
         }
         try {
             c.startActivity(intent)

@@ -1,5 +1,7 @@
 package com.system.app
 
+import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -78,27 +82,16 @@ private fun TimeRow(label: String, value: String, tone: Color = SysBlue, onClick
     }
 }
 
-// Quest registration shown as a popup window (not full screen).
+// Quest registration shown as a popup window. All values live in `draft`
+// so that both touch and voice can fill the same form.
 @Composable
-fun AddQuest(
-    onSave: (String, Int, Int, Int, Int, String, String, Int, Long) -> Unit,
-    onCancel: () -> Unit
-) {
-    var title by remember { mutableStateOf("") }
-    var stat by remember { mutableStateOf("STR") }
-    var rtype by remember { mutableStateOf("DAILY") }
-    var mask by remember { mutableIntStateOf(0) }
-    var date by remember { mutableStateOf(LocalDate.now()) }
-    var sh by remember { mutableIntStateOf(7) }
-    var sm by remember { mutableIntStateOf(0) }
-    var eh by remember { mutableIntStateOf(7) }
-    var em by remember { mutableIntStateOf(30) }
+fun AddQuest(draft: QuestDraft, onSave: () -> Unit, onCancel: () -> Unit) {
     var picking by remember { mutableStateOf<String?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
-    val validTime = eh * 60 + em > sh * 60 + sm
-    val daysOk = rtype != "DAYS" || mask != 0
-    val ok = title.isNotBlank() && validTime && daysOk
-    val reward = ((eh * 60 + em) - (sh * 60 + sm)).coerceAtLeast(0) * 2
+    val validTime = draft.eh * 60 + draft.em > draft.sh * 60 + draft.sm
+    val daysOk = draft.rtype != "DAYS" || draft.mask != 0
+    val ok = draft.title.isNotBlank() && validTime && daysOk
+    val reward = ((draft.eh * 60 + draft.em) - (draft.sh * 60 + draft.sm)).coerceAtLeast(0) * 2
 
     Modal(null) {
         PopupFrame("NEW QUEST") {
@@ -108,10 +101,10 @@ fun AddQuest(
             )
             Spacer(Modifier.height(14.dp))
             Box(Modifier.fillMaxWidth().border(1.dp, SysBlue).background(PanelBg).padding(14.dp)) {
-                if (title.isEmpty()) Text("Quest name (e.g. 10 Pushups)", color = Dim, fontSize = 16.sp)
+                if (draft.title.isEmpty()) Text("Quest name (e.g. 10 Pushups)", color = Dim, fontSize = 16.sp)
                 BasicTextField(
-                    value = title,
-                    onValueChange = { title = it },
+                    value = draft.title,
+                    onValueChange = { draft.title = it },
                     singleLine = true,
                     textStyle = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace),
                     cursorBrush = SolidColor(SysBlue),
@@ -123,7 +116,7 @@ fun AddQuest(
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("STR", "INT", "VIT").forEach { s ->
-                    SysBtn("[ $s ]", if (stat == s) SysBlue else Dim, Modifier.weight(1f)) { stat = s }
+                    SysBtn("[ $s ]", if (draft.stat == s) SysBlue else Dim, Modifier.weight(1f)) { draft.stat = s }
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -133,21 +126,21 @@ fun AddQuest(
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("DAILY", "DAYS", "DATE").forEach { k ->
-                    SysBtn("[ $k ]", if (rtype == k) SysBlue else Dim, Modifier.weight(1f)) { rtype = k }
+                    SysBtn("[ $k ]", if (draft.rtype == k) SysBlue else Dim, Modifier.weight(1f)) { draft.rtype = k }
                 }
             }
             Spacer(Modifier.height(4.dp))
             Text("DAILY: every day  •  DAYS: pick weekdays  •  DATE: one date", color = Dim, fontSize = 11.sp)
-            if (rtype == "DAYS") {
+            if (draft.rtype == "DAYS") {
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN").forEachIndexed { i, d ->
-                        val on = ((mask shr i) and 1) == 1
+                        val on = ((draft.mask shr i) and 1) == 1
                         Box(
                             Modifier.weight(1f)
                                 .border(1.dp, if (on) SysBlue else Dim)
                                 .background(if (on) SysBlue.copy(alpha = 0.25f) else Color.Transparent)
-                                .clickable { mask = mask xor (1 shl i) }
+                                .clickable { draft.mask = draft.mask xor (1 shl i) }
                                 .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -158,21 +151,21 @@ fun AddQuest(
                         }
                     }
                 }
-                if (mask == 0) {
+                if (draft.mask == 0) {
                     Spacer(Modifier.height(4.dp))
                     Text("Pick at least one day.", color = SysRed, fontSize = 12.sp)
                 }
             }
-            if (rtype == "DATE") {
+            if (draft.rtype == "DATE") {
                 Spacer(Modifier.height(10.dp))
-                TimeRow("DATE", fmtDate(date), Cyan) { pickingDate = true }
+                TimeRow("DATE", fmtDate(draft.date), Cyan) { pickingDate = true }
             }
             Spacer(Modifier.height(16.dp))
             Text("TIME  (tap to change)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
             Spacer(Modifier.height(8.dp))
-            TimeRow("START", fmt12(sh, sm)) { picking = "start" }
+            TimeRow("START", fmt12(draft.sh, draft.sm)) { picking = "start" }
             Spacer(Modifier.height(8.dp))
-            TimeRow("DEADLINE", fmt12(eh, em), SysRed) { picking = "end" }
+            TimeRow("DEADLINE", fmt12(draft.eh, draft.em), SysRed) { picking = "end" }
             Spacer(Modifier.height(12.dp))
             Text(
                 "REWARD: $reward XP  (2 XP per minute)", color = Cyan,
@@ -192,21 +185,15 @@ fun AddQuest(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SysBtn("[ CANCEL ]", Dim, Modifier.weight(1f)) { onCancel() }
                 SysBtn("[ REGISTER ]", if (ok) SysBlue else Dim, Modifier.weight(1f)) {
-                    if (ok) {
-                        onSave(
-                            title.trim(), sh, sm, eh, em, stat, rtype,
-                            if (rtype == "DAYS") mask else 127,
-                            if (rtype == "DATE") date.toEpochDay() else -1L
-                        )
-                    }
+                    if (ok) onSave()
                 }
             }
         }
     }
     if (pickingDate) {
         Modal(null) {
-            DatePickerPopup(date, { d ->
-                date = d
+            DatePickerPopup(draft.date, { d ->
+                draft.date = d
                 pickingDate = false
             }) { pickingDate = false }
         }
@@ -215,15 +202,15 @@ fun AddQuest(
     if (which != null) {
         Modal(null) {
             if (which == "start") {
-                TimePickerPopup("START TIME", sh, sm, { h, m ->
-                    sh = h
-                    sm = m
+                TimePickerPopup("START TIME", draft.sh, draft.sm, { h, m ->
+                    draft.sh = h
+                    draft.sm = m
                     picking = null
                 }) { picking = null }
             } else {
-                TimePickerPopup("DEADLINE", eh, em, { h, m ->
-                    eh = h
-                    em = m
+                TimePickerPopup("DEADLINE", draft.eh, draft.em, { h, m ->
+                    draft.eh = h
+                    draft.em = m
                     picking = null
                 }) { picking = null }
             }
@@ -304,6 +291,86 @@ fun QuestHome() {
     }
     val today = LocalDate.now()
 
+    val draft = remember { QuestDraft() }
+    val doSave: () -> Unit = {
+        val d = draft
+        val valid = d.title.isNotBlank() &&
+            d.eh * 60 + d.em > d.sh * 60 + d.sm &&
+            (d.rtype != "DAYS" || d.mask != 0)
+        if (valid) {
+            val name = d.title.trim()
+            scope.launch {
+                dao.insert(
+                    Quest(
+                        title = name, hour = d.sh, minute = d.sm, endHour = d.eh, endMinute = d.em,
+                        stat = d.stat, repeatType = d.rtype,
+                        daysMask = if (d.rtype == "DAYS") d.mask else 127,
+                        dateDay = if (d.rtype == "DATE") d.date.toEpochDay() else -1L
+                    )
+                )
+            }
+            SysPopup.post(ctx, "NOTIFICATION", "[Quest registered: $name]", 0, null)
+            adding = false
+        }
+    }
+
+    // ---- Voice ----
+    val prefs = remember { ctx.getSharedPreferences("system_prefs", Context.MODE_PRIVATE) }
+    val voice = remember { VoiceController(ctx, draft) }
+    voice.onEvent = { e ->
+        when (e) {
+            VoiceEvent.OPEN_NEW -> {
+                menuOpen = false
+                statusOpen = false
+                profileOpen = false
+                adding = true
+            }
+            VoiceEvent.OPEN_STATUS -> {
+                menuOpen = false
+                profileOpen = false
+                adding = false
+                statusOpen = true
+            }
+            VoiceEvent.OPEN_PROFILE -> {
+                menuOpen = false
+                statusOpen = false
+                adding = false
+                profileOpen = true
+            }
+            VoiceEvent.REGISTER -> doSave()
+            VoiceEvent.CANCEL_FORM -> adding = false
+        }
+    }
+    val lifecycle = (ctx as ComponentActivity).lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> if (prefs.getBoolean("voice_on", false)) voice.start()
+                Lifecycle.Event.ON_STOP -> voice.stop()
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(obs)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && prefs.getBoolean("voice_on", false)) {
+            voice.start()
+        }
+        onDispose {
+            lifecycle.removeObserver(obs)
+            voice.release()
+        }
+    }
+    val toggleVoice: () -> Unit = {
+        val on = !prefs.getBoolean("voice_on", false)
+        prefs.edit().putBoolean("voice_on", on).apply()
+        if (on) {
+            voice.start()
+            voice.say("वॉइस मोड चालू।")
+        } else {
+            voice.say("वॉइस मोड बंद।")
+            prefs.edit().putBoolean("voice_on", false).apply()
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             if (ProfileStore.saveFrom(ctx, uri)) {
@@ -332,12 +399,18 @@ fun QuestHome() {
             )
         } else {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                TopBar(
-                    photoVersion = photoVersion,
-                    onMenu = { menuOpen = true },
-                    onStatus = { statusOpen = true },
-                    onProfile = { profileOpen = true }
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        TopBar(
+                            photoVersion = photoVersion,
+                            onMenu = { menuOpen = true },
+                            onStatus = { statusOpen = true },
+                            onProfile = { profileOpen = true }
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    MicButton(on = voice.enabled, listening = voice.listening, onClick = toggleVoice)
+                }
                 Spacer(Modifier.height(12.dp))
                 SysFrame(Modifier.weight(1f).fillMaxWidth()) {
                     QuestInfoHeader("QUEST INFO")
@@ -373,7 +446,10 @@ fun QuestHome() {
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) { adding = true }
+                SysBtn("[ + NEW QUEST ]", modifier = Modifier.fillMaxWidth()) {
+                    draft.reset()
+                    adding = true
+                }
             }
 
             if (menuOpen) {
@@ -419,18 +495,8 @@ fun QuestHome() {
             }
             if (adding) {
                 AddQuest(
-                    onSave = { t, a, b, c, d, s, rt, dm, dd ->
-                        scope.launch {
-                            dao.insert(
-                                Quest(
-                                    title = t, hour = a, minute = b, endHour = c, endMinute = d,
-                                    stat = s, repeatType = rt, daysMask = dm, dateDay = dd
-                                )
-                            )
-                        }
-                        SysPopup.post(ctx, "NOTIFICATION", "[Quest registered: $t]", 0, null)
-                        adding = false
-                    },
+                    draft = draft,
+                    onSave = { doSave() },
                     onCancel = { adding = false }
                 )
             }

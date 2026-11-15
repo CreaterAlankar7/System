@@ -81,12 +81,13 @@ private fun TimeRow(label: String, value: String, tone: Color = SysBlue, onClick
 // Quest registration shown as a popup window (not full screen).
 @Composable
 fun AddQuest(
-    onSave: (String, Int, Int, Int, Int, String, String, Int, Long) -> Unit,
+    onSave: (String, Int, Int, Int, Int, String, String, Int, Long, String) -> Unit,
     onCancel: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var stat by remember { mutableStateOf("STR") }
     var rtype by remember { mutableStateOf("DAILY") }
+    var proof by remember { mutableStateOf("AUTO") }
     var mask by remember { mutableIntStateOf(0) }
     var date by remember { mutableStateOf(LocalDate.now()) }
     var sh by remember { mutableIntStateOf(7) }
@@ -168,6 +169,34 @@ fun AddQuest(
                 TimeRow("DATE", fmtDate(date), Cyan) { pickingDate = true }
             }
             Spacer(Modifier.height(16.dp))
+            Text("PROOF", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("AUTO", "ANY", "POSE", "TEXT", "QR").forEach { k ->
+                    val on = proof == k
+                    Box(
+                        Modifier.weight(1f)
+                            .border(2.dp, if (on) SysBlue else Dim)
+                            .background(if (on) SysBlue.copy(alpha = 0.25f) else Color.Transparent)
+                            .clickable { proof = k }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            k, color = if (on) Color.White else Dim,
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (proof == "AUTO") "AUTO picks: ${ProofRules.guess(title)}  (from quest name)"
+                else "Manual: $proof",
+                color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold
+            )
+            Text("ANY: any photo  •  POSE: body position  •  TEXT: written text  •  QR: scan code", color = Dim, fontSize = 11.sp)
+            Spacer(Modifier.height(16.dp))
             Text("TIME  (tap to change)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
             Spacer(Modifier.height(8.dp))
             TimeRow("START", fmt12(sh, sm)) { picking = "start" }
@@ -196,7 +225,8 @@ fun AddQuest(
                         onSave(
                             title.trim(), sh, sm, eh, em, stat, rtype,
                             if (rtype == "DAYS") mask else 127,
-                            if (rtype == "DATE") date.toEpochDay() else -1L
+                            if (rtype == "DATE") date.toEpochDay() else -1L,
+                            proof
                         )
                     }
                 }
@@ -271,7 +301,7 @@ fun QuestRow(q: Quest, st: QStatus, onProof: () -> Unit) {
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            "${q.scheduleLabel()}  •  ${q.stat}  •  $label  •  FAILS ${q.failStreak}  •  +${q.xpReward()} XP",
+            "${q.scheduleLabel()}  •  ${q.stat}  •  $label  •  FAILS ${q.failStreak}  •  +${q.xpReward()} XP  •  PROOF ${q.effectiveProof()}",
             color = tone, fontSize = 10.sp, letterSpacing = 1.sp
         )
         if (st == QStatus.ACTIVE) {
@@ -293,6 +323,7 @@ fun QuestHome() {
     var menuOpen by remember { mutableStateOf(false) }
     var statusOpen by remember { mutableStateOf(false) }
     var profileOpen by remember { mutableStateOf(false) }
+    var analyzing by remember { mutableStateOf(false) }
     var photoVersion by remember { mutableIntStateOf(0) }
     var proofFor by remember { mutableStateOf<Quest?>(null) }
     var nowM by remember { mutableIntStateOf(nowMin()) }
@@ -323,13 +354,39 @@ fun QuestHome() {
         if (pq != null) {
             CameraProof(
                 pq.id,
-                onCaptured = { _ ->
-                    scope.launch { dao.markDone(pq.id, LocalDate.now().toEpochDay()) }
-                    Rewards.gain(ctx, pq.xpReward(), pq.stat, 1, "Quest cleared: ${pq.title}")
-                    proofFor = null
+                onCaptured = { file ->
+                    if (!analyzing) {
+                        analyzing = true
+                        scope.launch {
+                            val r = ProofCheck.verify(file, pq)
+                            analyzing = false
+                            if (r.ok) {
+                                dao.markDone(pq.id, LocalDate.now().toEpochDay())
+                                Rewards.gain(
+                                    ctx, pq.xpReward(), pq.stat, 1,
+                                    "Quest cleared: ${pq.title}\n${r.message}"
+                                )
+                                proofFor = null
+                            } else {
+                                file.delete()
+                                SysPopup.post(ctx, "PROOF REJECTED", r.message, 2, "TRY AGAIN")
+                            }
+                        }
+                    }
                 },
                 onCancel = { proofFor = null }
             )
+            if (analyzing) {
+                Modal(null) {
+                    PopupFrame("ANALYZING") {
+                        Text(
+                            "[Verifying proof...]", color = Soft, fontSize = 15.sp,
+                            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                            style = GlowStyle
+                        )
+                    }
+                }
+            }
         } else {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 TopBar(
@@ -419,12 +476,13 @@ fun QuestHome() {
             }
             if (adding) {
                 AddQuest(
-                    onSave = { t, a, b, c, d, s, rt, dm, dd ->
+                    onSave = { t, a, b, c, d, s, rt, dm, dd, pf ->
                         scope.launch {
                             dao.insert(
                                 Quest(
                                     title = t, hour = a, minute = b, endHour = c, endMinute = d,
-                                    stat = s, repeatType = rt, daysMask = dm, dateDay = dd
+                                    stat = s, repeatType = rt, daysMask = dm, dateDay = dd,
+                                    proofType = pf
                                 )
                             )
                         }

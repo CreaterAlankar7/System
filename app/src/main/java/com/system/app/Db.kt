@@ -23,7 +23,8 @@ data class Quest(
     val stat: String = "STR",
     val repeatType: String = "DAILY",
     val daysMask: Int = 127,
-    val dateDay: Long = -1L
+    val dateDay: Long = -1L,
+    val proofType: String = "AUTO"
 )
 
 fun Quest.xpReward(): Int =
@@ -89,7 +90,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
-@Database(entities = [Quest::class], version = 5, exportSchema = false)
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE quests ADD COLUMN proofType TEXT NOT NULL DEFAULT 'AUTO'")
+    }
+}
+
+@Database(entities = [Quest::class], version = 6, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): QuestDao
 
@@ -97,7 +104,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var inst: AppDb? = null
         fun get(c: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(c.applicationContext, AppDb::class.java, "system.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build().also { inst = it }
         }
     }

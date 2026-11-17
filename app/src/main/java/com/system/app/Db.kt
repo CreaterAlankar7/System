@@ -27,6 +27,24 @@ data class Quest(
     val proofType: String = "AUTO"
 )
 
+// One counter inside a quest, e.g. Push-ups [37/100].
+@Entity(tableName = "goals")
+data class Goal(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val questId: Long,
+    val name: String,
+    val target: Int,
+    val unit: String = "reps",
+    val proofType: String = "AUTO",
+    val progress: Int = 0,
+    val progressDay: Long = -1L,
+    val doneDay: Long = -1L
+)
+
+fun Goal.progressOn(day: Long): Int = if (progressDay == day) progress else 0
+fun Goal.doneOn(day: Long): Boolean = doneDay == day
+fun Goal.unitSuffix(): String = if (unit == "reps" || unit.isBlank()) "" else " $unit"
+
 fun Quest.xpReward(): Int =
     ((endHour * 60 + endMinute) - (hour * 60 + minute)).coerceAtLeast(0) * 2
 
@@ -68,6 +86,21 @@ interface QuestDao {
 
     @Query("UPDATE quests SET lastDoneDay = :day, failStreak = 0 WHERE id = :id")
     suspend fun markDone(id: Long, day: Long)
+
+    @Insert
+    suspend fun insertGoal(g: Goal): Long
+
+    @Query("SELECT * FROM goals")
+    fun allGoals(): Flow<List<Goal>>
+
+    @Query("SELECT * FROM goals WHERE questId = :qid")
+    suspend fun goalsFor(qid: Long): List<Goal>
+
+    @Query("UPDATE goals SET progress = :p, progressDay = :day WHERE id = :id")
+    suspend fun setProgress(id: Long, p: Int, day: Long)
+
+    @Query("UPDATE goals SET doneDay = :day WHERE id = :id")
+    suspend fun markGoalDone(id: Long, day: Long)
 }
 
 val MIGRATION_2_3 = object : Migration(2, 3) {
@@ -96,7 +129,24 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
-@Database(entities = [Quest::class], version = 6, exportSchema = false)
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `goals` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`questId` INTEGER NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`target` INTEGER NOT NULL, " +
+                "`unit` TEXT NOT NULL, " +
+                "`proofType` TEXT NOT NULL, " +
+                "`progress` INTEGER NOT NULL, " +
+                "`progressDay` INTEGER NOT NULL, " +
+                "`doneDay` INTEGER NOT NULL)"
+        )
+    }
+}
+
+@Database(entities = [Quest::class, Goal::class], version = 7, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): QuestDao
 
@@ -104,7 +154,9 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var inst: AppDb? = null
         fun get(c: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(c.applicationContext, AppDb::class.java, "system.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(
+                    MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7
+                )
                 .build().also { inst = it }
         }
     }

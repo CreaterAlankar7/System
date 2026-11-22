@@ -226,7 +226,7 @@ fun AddQuest(
             Spacer(Modifier.height(16.dp))
             Text("GOALS  (optional)", color = SysBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
             Spacer(Modifier.height(4.dp))
-            Text("Counters like Push-ups 100. No goals = one photo proof.", color = Dim, fontSize = 11.sp)
+            Text("Counters like Push-ups 100. No goals = one proof for the whole quest.", color = Dim, fontSize = 11.sp)
             Spacer(Modifier.height(8.dp))
             goals.forEachIndexed { i, g ->
                 Row(
@@ -308,7 +308,7 @@ fun AddQuest(
             Spacer(Modifier.height(8.dp))
             if (goals.isNotEmpty()) {
                 Text(
-                    "Each goal is proven by a photo when it reaches its target (type auto from the goal name).",
+                    "Each goal is proven by a photo or a 3-5 sec video when it reaches its target (type auto from the goal name).",
                     color = Cyan, fontSize = 12.sp
                 )
             } else {
@@ -336,7 +336,7 @@ fun AddQuest(
                     else "Manual: $proof",
                     color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold
                 )
-                Text("ANY: any photo  •  POSE: body position  •  TEXT: written text  •  QR: scan code", color = Dim, fontSize = 11.sp)
+                Text("ANY: any photo  •  POSE: body position  •  TEXT: written text  •  QR: scan code. Proof can be a photo or a 3-5 sec video.", color = Dim, fontSize = 11.sp)
             }
 
             Spacer(Modifier.height(16.dp))
@@ -347,9 +347,16 @@ fun AddQuest(
             TimeRow("DEADLINE", fmt12(eh, em), SysRed) { picking = "end" }
             Spacer(Modifier.height(12.dp))
             Text(
-                "REWARD: $reward XP  (2 XP per minute)", color = Cyan,
-                fontSize = 13.sp, fontWeight = FontWeight.Bold
+                if (goals.isEmpty()) "REWARD: $reward XP  (2 XP per minute)"
+                else "REWARD: $reward XP total  •  ${reward / goals.size} XP per goal",
+                color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold
             )
+            if (goals.isNotEmpty()) {
+                Text(
+                    "Each goal gives its XP when completed. If any goal is left by the deadline the quest fails, but XP already earned stays.",
+                    color = Dim, fontSize = 11.sp
+                )
+            }
             if (!validTime) {
                 Spacer(Modifier.height(6.dp))
                 Text("Deadline must be after start time.", color = SysRed, fontSize = 12.sp)
@@ -447,6 +454,7 @@ fun LogGoalPopup(g: Goal, today: Long, onApply: (Int) -> Unit, onCancel: () -> U
 @Composable
 private fun GoalRow(
     g: Goal,
+    xp: Int,
     today: Long,
     active: Boolean,
     onLog: () -> Unit,
@@ -457,7 +465,10 @@ private fun GoalRow(
     val tone = if (done) Cyan else if (prog >= g.target) Soft else Color.White
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(g.name, color = tone, fontSize = 15.sp, modifier = Modifier.weight(1f), style = GlowStyle)
+            Column(Modifier.weight(1f)) {
+                Text(g.name, color = tone, fontSize = 15.sp, style = GlowStyle)
+                Text("+$xp XP", color = Dim, fontSize = 10.sp, letterSpacing = 1.sp)
+            }
             Text(
                 "[$prog/${g.target}${g.unitSuffix()}]", color = tone, fontSize = 13.sp,
                 fontFamily = FontFamily.Monospace
@@ -502,6 +513,7 @@ fun QuestRow(
         QStatus.UPCOMING -> "UPCOMING"
         QStatus.OFF -> "NOT TODAY"
     }
+    val gx = q.goalXp(goals)
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -533,7 +545,7 @@ fun QuestRow(
                 textDecoration = TextDecoration.Underline, letterSpacing = 2.sp, style = GlowStyle
             )
             goals.forEach { g ->
-                GoalRow(g, today, st == QStatus.ACTIVE, { onLog(g) }, { onGoalProof(g) })
+                GoalRow(g, gx[g.id] ?: 0, today, st == QStatus.ACTIVE, { onLog(g) }, { onGoalProof(g) })
             }
             Spacer(Modifier.height(8.dp))
         } else {
@@ -624,6 +636,7 @@ fun QuestHome() {
                                     ctx, pq.xpReward(), pq.stat, 1,
                                     "Quest cleared: ${pq.title}\n${r.message}"
                                 )
+                                if (file.extension.equals("mp4", ignoreCase = true)) file.delete()
                                 proofFor = null
                             } else {
                                 file.delete()
@@ -654,18 +667,20 @@ fun QuestHome() {
                                 val day = LocalDate.now().toEpochDay()
                                 dao.markGoalDone(gg.id, day)
                                 val all = dao.goalsFor(gq.id)
+                                val gxp = gq.goalXp(all)[gg.id] ?: 0
                                 val allDone = all.all { it.id == gg.id || it.doneOn(day) }
+                                if (file.extension.equals("mp4", ignoreCase = true)) file.delete()
                                 goalProof = null
                                 if (allDone) {
                                     dao.markDone(gq.id, day)
                                     Rewards.gain(
-                                        ctx, gq.xpReward(), gq.stat, 1,
+                                        ctx, gxp, gq.stat, 1,
                                         "Quest cleared: ${gq.title}\nAll goals complete."
                                     )
                                 } else {
-                                    SysPopup.post(
-                                        ctx, "NOTIFICATION",
-                                        "[Goal complete: ${gg.name}]\n${r.message}", 1, null
+                                    Rewards.gain(
+                                        ctx, gxp, "", 0,
+                                        "Goal complete: ${gg.name}\n${r.message}"
                                     )
                                 }
                             } else {

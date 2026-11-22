@@ -161,3 +161,13 @@ abstract class AppDb : RoomDatabase() {
         }
     }
 }
+
+// Splits the quest XP equally between its goals (remainder goes to the first goals).
+fun Quest.goalXp(goals: List<Goal>): Map<Long, Int> {
+    if (goals.isEmpty()) return emptyMap()
+    val sorted = goals.sortedBy { it.id }
+    val total = xpReward()
+    val per = total / sorted.size
+    val extra = total % sorted.size
+    return sorted.mapIndexed { i, g -> g.id to (per + if (i < extra) 1 else 0) }.toMap()
+}

@@ -46,7 +46,7 @@ fun Goal.doneOn(day: Long): Boolean = doneDay == day
 fun Goal.unitSuffix(): String = if (unit == "reps" || unit.isBlank()) "" else " $unit"
 
 fun Quest.xpReward(): Int =
-    ((endHour * 60 + endMinute) - (hour * 60 + minute)).coerceAtLeast(0) * 2
+    ((endHour * 60 + endMinute) - (hour * 60 + minute)).coerceAtLeast(0)
 
 fun Quest.appliesOn(d: LocalDate): Boolean = when (repeatType) {
     "DATE" -> d.toEpochDay() == dateDay

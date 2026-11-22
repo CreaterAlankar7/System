@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.PointF
 import android.media.ExifInterface
+import android.media.MediaMetadataRetriever
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -78,15 +79,30 @@ private suspend fun <T> Task<T>.awaitIt(): T = suspendCancellableCoroutine { con
     addOnFailureListener { cont.resumeWithException(it) }
 }
 
+private class PosePts(
+    val ls: PointF?, val rs: PointF?, val le: PointF?, val re: PointF?,
+    val lh: PointF?, val rh: PointF?, val lk: PointF?, val rk: PointF?,
+    val la: PointF?, val ra: PointF?
+) {
+    val visible: Int get() = listOfNotNull(ls, rs, le, re, lh, rh, lk, rk, la, ra).size
+}
+
 object ProofCheck {
     suspend fun verify(file: File, q: Quest): ProofResult = withContext(Dispatchers.Default) {
         val type = q.effectiveProof()
+        if (file.extension.equals("mp4", ignoreCase = true)) {
+            return@withContext try {
+                verifyVideo(file, type, q.title)
+            } catch (e: Exception) {
+                ProofResult(true, "AI check unavailable. Video accepted.")
+            }
+        }
         if (type == "ANY") return@withContext ProofResult(true, "Photo accepted.")
         val bmp = loadBitmap(file)
             ?: return@withContext ProofResult(false, "Could not read the photo. Try again.")
         try {
             when (type) {
-                "POSE" -> checkPose(bmp, ProofRules.exercise(q.title))
+                "POSE" -> judgePose(detectPose(bmp), ProofRules.exercise(q.title))
                 "TEXT" -> checkText(bmp)
                 "QR" -> checkQr(bmp)
                 else -> ProofResult(true, "Photo accepted.")
@@ -96,6 +112,75 @@ object ProofCheck {
             ProofResult(true, "AI check unavailable. Photo accepted.")
         }
     }
+
+    // ---------- video ----------
+
+    private fun fit(b: Bitmap, maxSide: Int = 960): Bitmap {
+        val m = maxOf(b.width, b.height)
+        if (m <= maxSide) return b
+        val s = maxSide.toFloat() / m
+        return Bitmap.createScaledBitmap(b, (b.width * s).toInt(), (b.height * s).toInt(), true)
+    }
+
+    private suspend fun firstOk(frames: List<Bitmap>, check: suspend (Bitmap) -> ProofResult): ProofResult? {
+        for (f in frames) {
+            val r = check(fit(f))
+            if (r.ok) return r
+        }
+        return null
+    }
+
+    private suspend fun verifyVideo(file: File, type: String, title: String): ProofResult {
+        val r = MediaMetadataRetriever()
+        try {
+            r.setDataSource(file.path)
+            val durMs = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            if (durMs < 2500) return ProofResult(false, "Video too short. Record at least 3 seconds.")
+            if (type == "ANY") return ProofResult(true, "Video accepted.")
+            val n = 6
+            val frames = (1..n).mapNotNull { i ->
+                r.getFrameAtTime(durMs * 1000L * i / (n + 1), MediaMetadataRetriever.OPTION_CLOSEST)
+            }
+            if (frames.isEmpty()) return ProofResult(false, "Could not read the video. Try again.")
+            return when (type) {
+                "POSE" -> videoPose(frames, ProofRules.exercise(title))
+                "TEXT" -> firstOk(frames) { b -> checkText(b) }
+                    ?: ProofResult(false, "No readable text in the video. Show your notes or book page clearly.")
+                "QR" -> firstOk(frames) { b -> checkQr(b) }
+                    ?: ProofResult(false, "No QR or barcode found in the video.")
+                else -> ProofResult(true, "Video accepted.")
+            }
+        } finally {
+            r.release()
+        }
+    }
+
+    private suspend fun videoPose(frames: List<Bitmap>, exercise: String): ProofResult {
+        var pass = 0
+        var lastMsg = "Pose not detected in the video."
+        val ys = mutableListOf<Double>()
+        for (f in frames) {
+            val p = detectPose(fit(f))
+            val res = judgePose(p, exercise)
+            if (res.ok) pass++ else lastMsg = res.message
+            val sh = mid(p.ls, p.rs)
+            val hp = mid(p.lh, p.rh)
+            if (sh != null && hp != null) {
+                val torso = hypot((sh.x - hp.x).toDouble(), (sh.y - hp.y).toDouble())
+                if (torso > 1.0) ys.add(sh.y / torso)
+            }
+        }
+        if (pass < 2) return ProofResult(false, lastMsg)
+        if (exercise == "PUSH" || exercise == "SQUAT") {
+            val move = if (ys.size >= 2) ys.max() - ys.min() else 0.0
+            if (move < 0.10) {
+                return ProofResult(false, "No movement detected. Do a few reps in the video.")
+            }
+        }
+        return ProofResult(true, "Video verified: pose and movement detected.")
+    }
+
+    // ---------- photo / frame helpers ----------
 
     private fun loadBitmap(file: File, maxSide: Int = 1280): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -141,7 +226,7 @@ object ProofCheck {
         return Math.toDegrees(acos(((v1x * v2x + v1y * v2y) / n).coerceIn(-1.0, 1.0)))
     }
 
-    private suspend fun checkPose(bmp: Bitmap, exercise: String): ProofResult {
+    private suspend fun detectPose(bmp: Bitmap): PosePts {
         val detector = PoseDetection.getClient(
             PoseDetectorOptions.Builder()
                 .setDetectorMode(PoseDetectorOptions.SINGLE_IMAGE_MODE)
@@ -156,25 +241,23 @@ object ProofCheck {
             val l = pose.getPoseLandmark(type) ?: return null
             return if (l.inFrameLikelihood >= 0.5f) l.position else null
         }
-        val ls = lm(PoseLandmark.LEFT_SHOULDER)
-        val rs = lm(PoseLandmark.RIGHT_SHOULDER)
-        val le = lm(PoseLandmark.LEFT_ELBOW)
-        val re = lm(PoseLandmark.RIGHT_ELBOW)
-        val lh = lm(PoseLandmark.LEFT_HIP)
-        val rh = lm(PoseLandmark.RIGHT_HIP)
-        val lk = lm(PoseLandmark.LEFT_KNEE)
-        val rk = lm(PoseLandmark.RIGHT_KNEE)
-        val la = lm(PoseLandmark.LEFT_ANKLE)
-        val ra = lm(PoseLandmark.RIGHT_ANKLE)
+        return PosePts(
+            lm(PoseLandmark.LEFT_SHOULDER), lm(PoseLandmark.RIGHT_SHOULDER),
+            lm(PoseLandmark.LEFT_ELBOW), lm(PoseLandmark.RIGHT_ELBOW),
+            lm(PoseLandmark.LEFT_HIP), lm(PoseLandmark.RIGHT_HIP),
+            lm(PoseLandmark.LEFT_KNEE), lm(PoseLandmark.RIGHT_KNEE),
+            lm(PoseLandmark.LEFT_ANKLE), lm(PoseLandmark.RIGHT_ANKLE)
+        )
+    }
 
-        val visible = listOfNotNull(ls, rs, le, re, lh, rh, lk, rk, la, ra).size
-        if (visible < 6) {
+    private fun judgePose(p: PosePts, exercise: String): ProofResult {
+        if (p.visible < 6) {
             return ProofResult(false, "Body not clear. Step back so your whole body is in the frame.")
         }
         return when (exercise) {
             "PUSH" -> {
-                val sh = mid(ls, rs)
-                val hp = mid(lh, rh)
+                val sh = mid(p.ls, p.rs)
+                val hp = mid(p.lh, p.rh)
                 if (sh == null || hp == null) {
                     ProofResult(false, "Shoulders and hips not visible. Show your body from the side.")
                 } else {
@@ -190,8 +273,8 @@ object ProofCheck {
             }
             "SQUAT" -> {
                 val angs = listOfNotNull(
-                    if (lh != null && lk != null && la != null) angleDeg(lh, lk, la) else null,
-                    if (rh != null && rk != null && ra != null) angleDeg(rh, rk, ra) else null
+                    if (p.lh != null && p.lk != null && p.la != null) angleDeg(p.lh, p.lk, p.la) else null,
+                    if (p.rh != null && p.rk != null && p.ra != null) angleDeg(p.rh, p.rk, p.ra) else null
                 )
                 if (angs.isNotEmpty() && angs.min() < 150.0) {
                     ProofResult(true, "Pose verified: knees bent.")

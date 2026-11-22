@@ -2,6 +2,7 @@ package com.system.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -21,6 +22,26 @@ class MainActivity : ComponentActivity() {
         if (AlarmState.current.value != null) {
             startActivity(Intent(this, AlarmActivity::class.java))
         }
+    }
+
+    // While the camera screen is open, volume / Bluetooth shutter keys act as the shutter.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handler = CameraKeys.onKey
+        val shutter = when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_CAMERA,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> true
+            else -> false
+        }
+        if (handler != null && shutter) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handler()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 }
 
